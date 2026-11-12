@@ -1,23 +1,28 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Generator
+import hashlib
+import os
+import secrets
+from collections.abc import Generator
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import Base, SessionLocal, engine
-from app.models import Project, Requirement, Scenario
-from app.schemas import ExtractionRequest, ProjectCreate, ProjectRead, RequirementInput, RequirementRead, ScenarioCreate, ScenarioRead, SimulationResult
-from app.services.simulator import extract_requirements, simulate
+from app.database import SessionLocal, engine
+from app.models import Project, Requirement, Scenario, User
+from app.schemas import AuthResponse, ProjectCreate, ProjectRead, RequirementRead, UserCreate, UserRead
 
-ROOT = Path(__file__).resolve().parents[2]
-FRONTEND = ROOT / "frontend"
-Base.metadata.create_all(bind=engine)
-app = FastAPI(title="MVP Requirements Simulator", version="0.2.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Universal Simulator")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -28,33 +33,105 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def find_project(db: Session, project_id: int) -> Project:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+def hash_password(password: str) -> str:
+    salt = os.getenv("PASSWORD_SALT", "universal-simulator-dev-salt").encode()
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000).hex()
+
+
+def new_session_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> User:
+    session_token = request.cookies.get("sessionid")
+    if not session_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    user = db.scalar(select(User).where(User.session_token == session_token))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+    return user
+
+
+def ensure_project_access(project: Project, user: User) -> Project:
+    if project.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access this project")
     return project
 
 
-def project_values(project: Project) -> list[dict]:
-    return [{"key": item.key, "value": item.value} for item in project.requirements]
+@app.on_event("startup")
+def startup() -> None:
+    from app.models import Base
+
+    Base.metadata.create_all(bind=engine)
 
 
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(FRONTEND / "index.html")
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
-app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+@app.post("/api/auth/register", response_model=AuthResponse)
+def register_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)) -> dict:
+    existing = db.scalar(select(User).where(User.username == payload.username))
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
+    token = new_session_token()
+    user = User(username=payload.username, password_hash=hash_password(payload.password), session_token=token)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    response.set_cookie("sessionid", token, httponly=True, samesite="lax")
+    return {"user": {"id": user.id, "username": user.username}}
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+def login_user(payload: UserCreate, response: Response, db: Session = Depends(get_db)) -> dict:
+    user = db.scalar(select(User).where(User.username == payload.username))
+    if user is None or user.password_hash != hash_password(payload.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+
+    token = new_session_token()
+    user.session_token = token
+    db.commit()
+    response.set_cookie("sessionid", token, httponly=True, samesite="lax")
+    return {"user": {"id": user.id, "username": user.username}}
+
+
+@app.post("/api/auth/logout")
+def logout_user(response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
+    user.session_token = None
+    db.commit()
+    response.delete_cookie("sessionid")
+    return {"status": "logged_out"}
+
+
+@app.get("/api/auth/me", response_model=UserRead)
+def get_me(user: User = Depends(get_current_user)) -> dict:
+    return {"id": user.id, "username": user.username}
 
 
 @app.get("/api/projects", response_model=list[ProjectRead])
-def list_projects(db: Session = Depends(get_db)):
-    return db.query(Project).order_by(Project.created_at.desc()).all()
+def list_projects(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[Project]:
+    projects = db.scalars(
+        select(Project).where(Project.user_id == user.id).order_by(Project.id.desc())
+    ).all()
+    return projects
 
 
-@app.post("/api/projects", response_model=ProjectRead, status_code=201)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
-    project = Project(name=payload.name.strip(), description=payload.description, original_requirements=payload.original_requirements)
+@app.post("/api/projects", response_model=ProjectRead)
+def create_project(payload: ProjectCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Project:
+    project = Project(
+        name=payload.name,
+        description=payload.description,
+        original_requirements=payload.original_requirements,
+        user_id=user.id,
+    )
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -62,62 +139,108 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectRead)
-def get_project(project_id: int, db: Session = Depends(get_db)):
-    return find_project(db, project_id)
+def get_project(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Project:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ensure_project_access(project, user)
 
 
-@app.post("/api/projects/{project_id}/requirements/extract")
-def preview_extraction(project_id: int, payload: ExtractionRequest, db: Session = Depends(get_db)):
-    find_project(db, project_id)
-    return {"extracted": extract_requirements(payload.text), "processing": "local heuristic; confirm fields before saving"}
-
-
-@app.put("/api/projects/{project_id}/requirements", response_model=list[RequirementRead])
-def replace_requirements(project_id: int, items: list[RequirementInput], db: Session = Depends(get_db)):
-    project = find_project(db, project_id)
-    project.requirements.clear()
-    db.flush()
-    created = [Requirement(project_id=project_id, **item.model_dump()) for item in items]
-    db.add_all(created)
+@app.put("/api/projects/{project_id}", response_model=ProjectRead)
+def update_project(
+    project_id: int,
+    payload: ProjectCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Project:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = ensure_project_access(project, user)
+    project.name = payload.name
+    project.description = payload.description
+    project.original_requirements = payload.original_requirements
     db.commit()
-    for item in created:
-        db.refresh(item)
-    return created
+    db.refresh(project)
+    return project
 
 
-@app.post("/api/projects/{project_id}/simulate", response_model=SimulationResult)
-def simulate_project(project_id: int, db: Session = Depends(get_db)):
-    project = find_project(db, project_id)
-    result = simulate(project_values(project))
-    return SimulationResult(project_id=project_id, **result)
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    project = ensure_project_access(project, user)
+    db.delete(project)
+    db.commit()
+    return {"status": "deleted"}
 
 
-@app.get("/api/projects/{project_id}/scenarios", response_model=list[ScenarioRead])
-def list_scenarios(project_id: int, db: Session = Depends(get_db)):
-    find_project(db, project_id)
-    scenarios = db.query(Scenario).filter(Scenario.project_id == project_id).order_by(Scenario.id).all()
-    return [ScenarioRead(id=item.id, project_id=item.project_id, name=item.name, description=item.description, overrides=json.loads(item.overrides_json or "{}")) for item in scenarios]
+@app.post("/api/projects/{project_id}/requirements")
+def create_requirement(
+    project_id: int,
+    payload: RequirementRead,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Requirement:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_project_access(project, user)
+
+    requirement = Requirement(
+        category=payload.category,
+        key=payload.key,
+        value=payload.value,
+        unit=payload.unit,
+        source_text=payload.source_text,
+        confidence=payload.confidence,
+        confirmed=payload.confirmed,
+        project_id=project.id,
+    )
+    db.add(requirement)
+    db.commit()
+    db.refresh(requirement)
+    return requirement
 
 
-@app.post("/api/projects/{project_id}/scenarios", response_model=ScenarioRead, status_code=201)
-def create_scenario(project_id: int, payload: ScenarioCreate, db: Session = Depends(get_db)):
-    find_project(db, project_id)
-    allowed = {"users", "daily_events", "retention_days", "peak_factor", "budget", "avg_event_size_kb", "compute_instances", "compute_unit_cost", "database_monthly_cost", "cache_monthly_cost", "queue_monthly_cost", "storage_cost_per_gb", "network_monthly_cost"}
-    unknown = set(payload.overrides) - allowed
-    if unknown:
-        raise HTTPException(status_code=422, detail=f"Unsupported override keys: {', '.join(sorted(unknown))}")
-    scenario = Scenario(project_id=project_id, name=payload.name.strip(), description=payload.description, overrides_json=json.dumps(payload.overrides))
+@app.get("/api/projects/{project_id}/requirements")
+def get_requirements(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[Requirement]:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_project_access(project, user)
+    return db.scalars(select(Requirement).where(Requirement.project_id == project_id)).all()
+
+
+@app.post("/api/projects/{project_id}/scenarios")
+def create_scenario(
+    project_id: int,
+    payload: dict,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Scenario:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_project_access(project, user)
+
+    scenario = Scenario(
+        name=payload.get("name", "Scenario"),
+        description=payload.get("description"),
+        overrides=str(payload.get("overrides", {})),
+        project_id=project.id,
+    )
     db.add(scenario)
     db.commit()
     db.refresh(scenario)
-    return ScenarioRead(id=scenario.id, project_id=project_id, name=scenario.name, description=scenario.description, overrides=payload.overrides)
+    return scenario
 
 
-@app.post("/api/projects/{project_id}/scenarios/{scenario_id}/simulate", response_model=SimulationResult)
-def simulate_scenario(project_id: int, scenario_id: int, db: Session = Depends(get_db)):
-    project = find_project(db, project_id)
-    scenario = db.query(Scenario).filter(Scenario.id == scenario_id, Scenario.project_id == project_id).first()
-    if scenario is None:
-        raise HTTPException(status_code=404, detail="Scenario not found")
-    result = simulate(project_values(project), json.loads(scenario.overrides_json or "{}"))
-    return SimulationResult(project_id=project_id, scenario_id=scenario_id, **result)
+@app.get("/api/projects/{project_id}/scenarios")
+def get_scenarios(project_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[Scenario]:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_project_access(project, user)
+    return db.scalars(select(Scenario).where(Scenario.project_id == project_id)).all()

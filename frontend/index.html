@@ -1,95 +1,550 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MVP Requirements Simulator</title>
-  <link rel="stylesheet" href="/static/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
-</head>
-<body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="/"><span class="brand-icon">M</span><span>MVP Simulator<small>SOFTWARE PLANNING</small></span></a>
-      <button id="new-project" class="button primary full">＋ New requirements</button>
-      <div class="nav-label">SAVED PROJECTS</div>
-      <nav id="project-list" class="project-list" aria-label="Saved projects"></nav>
-      <div class="side-note">Enter requirements here. The backend runs all calculations and returns estimates with assumptions.</div>
-    </aside>
-    <main class="main">
-      <header class="topbar"><div><div class="eyebrow">MVP PLANNING WORKSPACE</div><h1 id="page-title">Enter your MVP requirements</h1></div><div class="processing"><span></span> Backend processing</div></header>
-      <div id="notice" class="notice hidden" role="status"></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Universal Simulator</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #121d2e;
+        --panel-alt: #1a2940;
+        --line: rgba(148, 163, 184, 0.2);
+        --text: #e5eef9;
+        --muted: #a4b0c2;
+        --accent: #4cc9f0;
+        --accent-strong: #4895ef;
+        --danger: #ef476f;
+        --success: #2ec4b6;
+      }
 
-      <section id="welcome" class="welcome card">
-        <div class="eyebrow">REQUIREMENTS IN · ANALYSIS OUT</div>
-        <h2>Describe your MVP.<br/>Get a structured feasibility view.</h2>
-        <p>Enter product, workload, schedule, budget, and architecture inputs. The server calculates workload, storage, and component cost estimates.</p>
-        <button id="start-project" class="button primary">Enter MVP requirements <span>→</span></button>
-      </section>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(160deg, #0b1220, #121d2e 45%, #0c1324);
+        color: var(--text);
+      }
 
-      <section id="entry-view" class="hidden">
-        <form id="requirements-form">
-          <div class="page-heading"><div><div class="eyebrow">DATA ENTRY</div><h2>Define the MVP inputs</h2><p>Unknown values can stay blank. Estimates will only use the inputs you provide.</p></div><button class="button primary submit-button" type="submit">Process requirements <span>→</span></button></div>
-          <div class="form-grid">
-            <section class="card form-section"><div class="section-heading"><span class="number">01</span><div><h3>Project overview</h3><p>Identify the product and its target users.</p></div></div>
-              <label>Project name<input id="project-name" required maxlength="200" placeholder="e.g. Team Planner MVP" /></label>
-              <label>Product summary<textarea id="project-description" rows="3" placeholder="What does the MVP do and who is it for?"></textarea></label>
-              <label>Requirements notes <span class="hint">Optional — used as source context</span><textarea id="requirements-notes" rows="3" placeholder="Constraints, integrations, compliance needs, or other context"></textarea></label>
-            </section>
-            <section class="card form-section"><div class="section-heading"><span class="number">02</span><div><h3>Usage &amp; data</h3><p>Workload and retention inputs for the server-side model.</p></div></div>
-              <div class="fields two-col">
-                <label>Expected users<input data-key="users" type="number" min="0" step="any" placeholder="e.g. 10000" /><small>users</small></label>
-                <label>Daily events / requests<input data-key="daily_events" type="number" min="0" step="any" placeholder="e.g. 500000" /><small>per day</small></label>
-                <label>Peak traffic factor<input data-key="peak_factor" type="number" min="0.01" step="any" placeholder="e.g. 3" /><small>× average load</small></label>
-                <label>Data retention<input data-key="retention_days" type="number" min="0" step="any" placeholder="e.g. 90" /><small>days</small></label>
-                <label>Average event size<input data-key="avg_event_size_kb" type="number" min="0" step="any" placeholder="e.g. 2" /><small>KB per event</small></label>
-                <label>Response-time target<input data-key="response_time_ms" type="number" min="0" step="any" placeholder="e.g. 250" /><small>milliseconds (target only)</small></label>
-              </div>
-            </section>
-            <section class="card form-section"><div class="section-heading"><span class="number">03</span><div><h3>Budget &amp; timeline</h3><p>Set constraints; budget is compared with your entered component prices.</p></div></div>
-              <div class="fields two-col">
-                <label>Monthly infrastructure budget<input data-key="budget" type="number" min="0" step="0.01" placeholder="e.g. 1200" /><small>USD / month</small></label>
-                <label>Target launch timeline<input data-key="launch_weeks" type="number" min="0" step="any" placeholder="e.g. 8" /><small>weeks (planning input)</small></label>
-                <label>Availability target<input data-key="availability_target" type="text" placeholder="e.g. 99.9%" /><small>target, not a modeled guarantee</small></label>
-              </div>
-            </section>
-            <section class="card form-section"><div class="section-heading"><span class="number">04</span><div><h3>Architecture assumptions</h3><p>Choose an initial shape and optionally enter monthly prices.</p></div></div>
-              <div class="fields two-col">
-                <label>Database<select data-key="database_type"><option value="">Not decided</option><option>PostgreSQL</option><option>MySQL</option><option>SQLite</option><option>MongoDB</option><option>Other / managed service</option></select></label>
-                <label>Deployment region<input data-key="deployment_region" type="text" placeholder="e.g. US East" /></label>
-                <label>Application instances<input data-key="compute_instances" type="number" min="0" step="1" placeholder="e.g. 2" /><small>instances</small></label>
-                <label>Cost per application instance<input data-key="compute_unit_cost" type="number" min="0" step="0.01" placeholder="e.g. 35" /><small>USD / instance / month</small></label>
-                <label>Database monthly cost<input data-key="database_monthly_cost" type="number" min="0" step="0.01" placeholder="e.g. 80" /><small>USD / month</small></label>
-                <label>Cache monthly cost<input data-key="cache_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
-                <label>Queue monthly cost<input data-key="queue_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
-                <label>Storage price<input data-key="storage_cost_per_gb" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / GB / month</small></label>
-                <label>Networking allowance<input data-key="network_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
-                <label class="check-label"><input data-key="cache_enabled" type="checkbox" /> Include a cache in the proposed design</label>
-                <label class="check-label"><input data-key="queue_enabled" type="checkbox" /> Include a background queue</label>
-              </div>
-            </section>
-          </div>
-          <div class="submit-bottom"><span class="hint">Your entries are saved to this simulator project.</span><button class="button primary" type="submit">Process requirements <span>→</span></button></div>
+      .hidden { display: none !important; }
+
+      .shell {
+        max-width: 1200px;
+        margin: 0 auto;
+        min-height: 100vh;
+        padding: 32px 16px;
+      }
+
+      .auth-shell {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+
+      .auth-card {
+        width: min(420px, 100%);
+        background: rgba(18, 29, 46, 0.9);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+      }
+
+      .auth-card h1 {
+        margin: 0 0 12px;
+        font-size: 2rem;
+      }
+
+      .subhead, .muted {
+        color: var(--muted);
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
+      input, textarea, button {
+        font: inherit;
+      }
+
+      input, textarea {
+        width: 100%;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--text);
+        padding: 12px 14px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 14px;
+        cursor: pointer;
+        transition: 0.18s ease;
+      }
+
+      .primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        color: #05131d;
+        font-weight: 700;
+      }
+
+      .secondary {
+        background: rgba(76, 201, 240, 0.12);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+
+      .button-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .notice {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 0.95rem;
+      }
+
+      .notice.error {
+        background: rgba(239, 71, 111, 0.12);
+        border: 1px solid rgba(239, 71, 111, 0.35);
+        color: #ffd3de;
+      }
+
+      .notice.success {
+        background: rgba(46, 196, 182, 0.12);
+        border: 1px solid rgba(46, 196, 182, 0.35);
+        color: #cafaf3;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        min-height: 90vh;
+        gap: 18px;
+      }
+
+      .sidebar, .content {
+        background: rgba(18, 29, 46, 0.9);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .brand {
+        font-size: 1.2rem;
+        font-weight: 700;
+      }
+
+      .user-card {
+        background: rgba(12, 19, 36, 0.7);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .project-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .project-item {
+        text-align: left;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: rgba(15, 23, 42, 0.7);
+        color: var(--text);
+      }
+
+      .project-item.active {
+        background: rgba(76, 201, 240, 0.12);
+        border-color: rgba(76, 201, 240, 0.5);
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .content {
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        background: rgba(12, 19, 36, 0.7);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+      @media (max-width: 820px) {
+        .app-shell { grid-template-columns: 1fr; }
+        .grid-2 { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="auth-view" class="auth-shell">
+      <div class="auth-card">
+        <h1>Universal Simulator</h1>
+        <div class="subhead">Plan MVPs with requirements, workload, and architecture assumptions.</div>
+
+        <div class="button-row">
+          <button id="show-login" class="primary" type="button">Login</button>
+          <button id="show-register" class="secondary" type="button">Register</button>
+        </div>
+
+        <form id="login-form">
+          <label>
+            Username
+            <input name="username" required maxlength="80" placeholder="your username" />
+          </label>
+          <label>
+            Password
+            <input type="password" name="password" required minlength="6" maxlength="200" placeholder="your password" />
+          </label>
+          <button class="primary" type="submit">Sign in</button>
         </form>
-      </section>
 
-      <section id="results-view" class="hidden">
-        <div class="results-header"><div><div class="eyebrow">BACKEND ANALYSIS</div><h2 id="result-title">Simulation results</h2><p id="result-description" class="muted"></p></div><button id="edit-inputs" class="button secondary">Edit inputs</button></div>
-        <div class="metric-grid">
-          <article class="metric-card"><span>Average workload</span><strong id="metric-average">—</strong><small>requests / second</small></article>
-          <article class="metric-card"><span>Peak workload</span><strong id="metric-peak">—</strong><small>requests / second</small></article>
-          <article class="metric-card"><span>Retained data</span><strong id="metric-storage">—</strong><small>estimated GB</small></article>
-          <article class="metric-card"><span>Estimated component cost</span><strong id="metric-cost">—</strong><small>USD / month</small></article>
-          <article class="metric-card"><span>Budget remaining</span><strong id="metric-budget">—</strong><small>after modeled costs</small></article>
-        </div>
-        <div class="results-grid">
-          <article class="card"><div class="eyebrow">SUMMARY</div><h3>What the inputs indicate</h3><p id="summary" class="summary"></p><h4>Warnings &amp; missing inputs</h4><ul id="warnings"></ul></article>
-          <article class="card"><div class="eyebrow">MODEL TRANSPARENCY</div><h3>Assumptions &amp; architecture</h3><h4>Calculation assumptions</h4><ul id="assumptions"></ul><h4>Architecture entered</h4><ul id="architecture"></ul></article>
-          <article class="card chart-card"><div class="eyebrow">BUDGET MODEL</div><h3>Estimated monthly cost breakdown</h3><div class="chart-container"><canvas id="cost-chart" aria-label="Monthly cost breakdown chart"></canvas></div><p id="chart-empty" class="muted small hidden">Enter component prices to show a cost breakdown.</p></article>
-        </div>
-      </section>
-    </main>
-  </div>
-</body>
+        <form id="register-form" class="hidden">
+          <label>
+            Username
+            <input name="username" required maxlength="80" placeholder="choose a username" />
+          </label>
+          <label>
+            Password
+            <input type="password" name="password" required minlength="6" maxlength="200" placeholder="minimum 6 characters" />
+          </label>
+          <button class="primary" type="submit">Create account</button>
+        </form>
+
+        <div id="auth-notice" class="notice hidden"></div>
+      </div>
+    </div>
+
+    <div id="app-view" class="shell hidden">
+      <div class="app-shell">
+        <aside class="sidebar">
+          <div>
+            <div class="brand">Universal Simulator</div>
+          </div>
+
+          <div class="user-card">
+            <div class="muted">Signed in as</div>
+            <strong id="username-label">—</strong>
+          </div>
+
+          <div>
+            <button id="new-project" class="primary" type="button">+ New project</button>
+            <div class="project-list" id="project-list"></div>
+          </div>
+
+          <button id="logout-btn" class="secondary" type="button">Log out</button>
+        </aside>
+
+        <main class="content">
+          <div class="panel">
+            <h2 id="project-title">Create a project</h2>
+            <div class="meta" id="project-subtitle">Manage your own simulator projects.</div>
+          </div>
+
+          <form id="project-form" class="panel stack">
+            <div class="grid-2">
+              <label>
+                Project name
+                <input id="project-name" name="name" required maxlength="200" placeholder="Team Planner MVP" />
+              </label>
+              <label>
+                Description
+                <input id="project-description" name="description" maxlength="400" placeholder="Short summary" />
+              </label>
+            </div>
+
+            <label>
+              Original requirements
+              <textarea id="project-requirements" name="original_requirements" rows="6" placeholder="Paste raw requirements, notes, or constraints here..."></textarea>
+            </label>
+
+            <div class="button-row">
+              <button class="primary" type="submit">Save project</button>
+              <button id="delete-project" class="secondary" type="button">Delete project</button>
+            </div>
+          </form>
+
+          <div id="project-notice" class="notice hidden"></div>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      const authView = document.getElementById('auth-view');
+      const appView = document.getElementById('app-view');
+      const loginForm = document.getElementById('login-form');
+      const registerForm = document.getElementById('register-form');
+      const authNotice = document.getElementById('auth-notice');
+      const projectForm = document.getElementById('project-form');
+      const projectNotice = document.getElementById('project-notice');
+      const projectList = document.getElementById('project-list');
+      const usernameLabel = document.getElementById('username-label');
+      const projectTitle = document.getElementById('project-title');
+      const projectSubtitle = document.getElementById('project-subtitle');
+      const projectName = document.getElementById('project-name');
+      const projectDescription = document.getElementById('project-description');
+      const projectRequirements = document.getElementById('project-requirements');
+
+      const state = {
+        user: null,
+        projects: [],
+        activeProjectId: null,
+      };
+
+      function notify(element, message, type = 'success') {
+        element.textContent = message;
+        element.classList.remove('hidden');
+        element.classList.remove('success', 'error');
+        element.classList.add(type);
+      }
+
+      function hideNotice(element) {
+        element.classList.add('hidden');
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {}),
+          },
+          ...options,
+        });
+
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+
+        if (!response.ok) {
+          const detail = data?.detail || 'Request failed';
+          throw new Error(detail);
+        }
+
+        return data;
+      }
+
+      function showAuth() {
+        authView.classList.remove('hidden');
+        appView.classList.add('hidden');
+      }
+
+      function showApp() {
+        authView.classList.add('hidden');
+        appView.classList.remove('hidden');
+      }
+
+      function setActiveForm(type) {
+        const loginHidden = type !== 'login';
+        const registerHidden = type !== 'register';
+        loginForm.classList.toggle('hidden', loginHidden);
+        registerForm.classList.toggle('hidden', registerHidden);
+      }
+
+      async function loadCurrentUser() {
+        try {
+          const me = await api('/api/auth/me');
+          state.user = me;
+          usernameLabel.textContent = me.username;
+          showApp();
+          await loadProjects();
+        } catch (error) {
+          state.user = null;
+          showAuth();
+        }
+      }
+
+      async function loadProjects() {
+        const projects = await api('/api/projects');
+        state.projects = projects;
+        projectList.innerHTML = '';
+
+        if (!projects.length) {
+          const empty = document.createElement('div');
+          empty.className = 'meta';
+          empty.textContent = 'No projects yet';
+          projectList.appendChild(empty);
+          return;
+        }
+
+        for (const project of projects) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'project-item' + (project.id === state.activeProjectId ? ' active' : '');
+          button.innerHTML = `<strong>${project.name}</strong><div class="meta">#${project.id}</div>`;
+          button.addEventListener('click', async () => {
+            state.activeProjectId = project.id;
+            await loadProject(project.id);
+            renderProjectButtons();
+          });
+          projectList.appendChild(button);
+        }
+
+        renderProjectButtons();
+      }
+
+      function renderProjectButtons() {
+        [...projectList.querySelectorAll('.project-item')].forEach((item) => {
+          const isActive = Number(item.querySelector('strong')?.textContent?.match(/#\d+/)?.[0]?.replace('#', '')) === state.activeProjectId;
+          item.classList.toggle('active', isActive);
+        });
+      }
+
+      async function loadProject(id) {
+        const project = await api(`/api/projects/${id}`);
+        state.activeProjectId = id;
+        projectTitle.textContent = project.name;
+        projectSubtitle.textContent = `Project #${project.id}`;
+        projectName.value = project.name;
+        projectDescription.value = project.description || '';
+        projectRequirements.value = project.original_requirements || '';
+      }
+
+      async function resetProjectForm() {
+        state.activeProjectId = null;
+        projectTitle.textContent = 'Create a project';
+        projectSubtitle.textContent = 'Manage your own simulator projects.';
+        projectForm.reset();
+      }
+
+      document.getElementById('show-login').addEventListener('click', () => setActiveForm('login'));
+      document.getElementById('show-register').addEventListener('click', () => setActiveForm('register'));
+
+      loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice(authNotice);
+        const formData = new FormData(loginForm);
+        try {
+          await api('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username: formData.get('username'), password: formData.get('password') }),
+          });
+          await loadCurrentUser();
+          setActiveForm('login');
+        } catch (error) {
+          notify(authNotice, error.message, 'error');
+        }
+      });
+
+      registerForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice(authNotice);
+        const formData = new FormData(registerForm);
+        try {
+          await api('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ username: formData.get('username'), password: formData.get('password') }),
+          });
+          await loadCurrentUser();
+        } catch (error) {
+          notify(authNotice, error.message, 'error');
+        }
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        try {
+          await api('/api/auth/logout', { method: 'POST' });
+        } catch (error) {
+          // ignore logout errors; allow UI to reset
+        }
+        state.user = null;
+        state.projects = [];
+        state.activeProjectId = null;
+        showAuth();
+        resetProjectForm();
+      });
+
+      projectForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice(projectNotice);
+
+        const payload = {
+          name: projectName.value.trim(),
+          description: projectDescription.value.trim(),
+          original_requirements: projectRequirements.value.trim(),
+        };
+
+        try {
+          if (state.activeProjectId) {
+            await api(`/api/projects/${state.activeProjectId}`, {
+              method: 'PUT',
+              body: JSON.stringify(payload),
+            });
+            notify(projectNotice, 'Project updated successfully.', 'success');
+          } else {
+            const created = await api('/api/projects', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            state.activeProjectId = created.id;
+            notify(projectNotice, 'Project created successfully.', 'success');
+          }
+          await loadProjects();
+          if (state.activeProjectId) {
+            await loadProject(state.activeProjectId);
+          }
+        } catch (error) {
+          notify(projectNotice, error.message, 'error');
+        }
+      });
+
+      document.getElementById('new-project').addEventListener('click', async () => {
+        await resetProjectForm();
+        await loadProjects();
+      });
+
+      document.getElementById('delete-project').addEventListener('click', async () => {
+        if (!state.activeProjectId) {
+          notify(projectNotice, 'Select a project to delete.', 'error');
+          return;
+        }
+
+        try {
+          await api(`/api/projects/${state.activeProjectId}`, { method: 'DELETE' });
+          notify(projectNotice, 'Project deleted.', 'success');
+          await resetProjectForm();
+          await loadProjects();
+        } catch (error) {
+          notify(projectNotice, error.message, 'error');
+        }
+      });
+
+      setActiveForm('login');
+      loadCurrentUser();
+    </script>
+  </body>
 </html>

@@ -30,6 +30,7 @@ class ProjectCreate(BaseModel):
 class ProjectRead(ProjectCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    user_id: int
     requirements: list[RequirementRead] = Field(default_factory=list)
 
 
@@ -65,3 +66,17 @@ class SimulationResult(BaseModel):
     architecture: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=80)
+    password: str = Field(min_length=6, max_length=200)
+
+
+class UserRead(BaseModel):
+    id: int
+    username: str
+
+
+class AuthResponse(BaseModel):
+    user: UserRead
