@@ -5,6 +5,38 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=10, max_length=200)
+
+
+class UserLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class UserRead(BaseModel):
+    id: int
+    username: str
+
+
+class AuthResponse(BaseModel):
+    user: UserRead
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=4000)
+    original_requirements: str | None = Field(default=None, max_length=20000)
+
+
+class ProjectRead(ProjectCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    user_id: int | None
+    requirements: list[RequirementRead] = Field(default_factory=list)
+
+
 class RequirementInput(BaseModel):
     category: str = "system"
     key: str = Field(min_length=1, max_length=80)
@@ -19,19 +51,6 @@ class RequirementRead(RequirementInput):
     model_config = ConfigDict(from_attributes=True)
     id: int
     project_id: int
-
-
-class ProjectCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    description: str | None = None
-    original_requirements: str | None = None
-
-
-class ProjectRead(ProjectCreate):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    user_id: int
-    requirements: list[RequirementRead] = Field(default_factory=list)
 
 
 class ExtractionRequest(BaseModel):
@@ -68,15 +87,12 @@ class SimulationResult(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
 
 
-class UserCreate(BaseModel):
-    username: str = Field(min_length=3, max_length=80)
-    password: str = Field(min_length=6, max_length=200)
+class ProjectShareCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    role: Literal["viewer", "editor"] = "viewer"
 
 
-class UserRead(BaseModel):
-    id: int
+class ProjectMemberRead(BaseModel):
+    user_id: int
     username: str
-
-
-class AuthResponse(BaseModel):
-    user: UserRead
+    role: Literal["owner", "viewer", "editor"]

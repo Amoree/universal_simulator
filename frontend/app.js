@@ -1,127 +1,36 @@
 const API = '/api';
-const labels = {
-  users: ['users', 'users'], daily_events: ['daily events', 'events/day'], peak_factor: ['peak traffic factor', 'x'],
-  retention_days: ['retention', 'days'], avg_event_size_kb: ['average event size', 'KB'], response_time_ms: ['response-time target', 'ms'],
-  budget: ['monthly budget', 'USD/month'], launch_weeks: ['launch timeline', 'weeks'], availability_target: ['availability target', 'target'],
-  database_type: ['database', 'choice'], deployment_region: ['deployment region', 'region'], cache_enabled: ['cache enabled', 'boolean'], queue_enabled: ['queue enabled', 'boolean'],
-  compute_instances: ['application instances', 'instances'], compute_unit_cost: ['compute cost per instance', 'USD/month'], database_monthly_cost: ['database cost', 'USD/month'],
-  cache_monthly_cost: ['cache cost', 'USD/month'], queue_monthly_cost: ['queue cost', 'USD/month'], storage_cost_per_gb: ['storage unit cost', 'USD/GB/month'], network_monthly_cost: ['networking allowance', 'USD/month'],
+const LABELS = {
+  users:['Expected users','users'],daily_events:['Daily events','events/day'],peak_factor:['Peak traffic factor','x'],retention_days:['Data retention','days'],avg_event_size_kb:['Average event size','KB'],response_time_ms:['Response time target','ms'],budget:['Monthly budget','USD/month'],launch_weeks:['Launch timeline','weeks'],availability_target:['Availability target','target'],database_type:['Database','choice'],deployment_region:['Deployment region','region'],cache_enabled:['Cache enabled','boolean'],queue_enabled:['Background queue enabled','boolean'],compute_instances:['Application instances','instances'],compute_unit_cost:['Compute unit cost','USD/month'],database_monthly_cost:['Database cost','USD/month'],cache_monthly_cost:['Cache cost','USD/month'],queue_monthly_cost:['Queue cost','USD/month'],storage_cost_per_gb:['Storage price','USD/GB/month'],network_monthly_cost:['Networking allowance','USD/month']
 };
-let projectId = null;
-let costChart = null;
-const $ = (id) => document.getElementById(id);
+const $=id=>document.getElementById(id);
+let currentUser=null, currentProject=null, chart=null, authMode='login';
 
-async function request(path, options = {}) {
-  const response = await fetch(API + path, {headers: {'Content-Type': 'application/json'}, ...options});
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
-  return body;
+async function api(path, options={}){
+  const response=await fetch(API+path,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+  const text=await response.text();let data=null;try{data=text?JSON.parse(text):null;}catch{data={detail:text||'Unexpected server response'};}
+  if(!response.ok)throw new Error(data?.detail||`Request failed (${response.status})`);
+  return data;
 }
-function notify(message, error = false) {
-  const el = $('notice'); el.textContent = message; el.classList.toggle('error', error); el.classList.remove('hidden');
-  clearTimeout(notify.timer); notify.timer = setTimeout(() => el.classList.add('hidden'), 5000);
-}
-function setView(view) {
-  $('welcome').classList.toggle('hidden', view !== 'welcome');
-  $('entry-view').classList.toggle('hidden', view !== 'entry');
-  $('results-view').classList.toggle('hidden', view !== 'results');
-}
-function readFormValues() {
-  return [...document.querySelectorAll('#requirements-form [data-key]')].map((input) => {
-    const key = input.dataset.key;
-    const value = input.type === 'checkbox' ? String(input.checked) : input.value.trim();
-    if (value === '') return null;
-    const [label, unit] = labels[key] || [key, ''];
-    return {category: key.includes('cost') || key === 'budget' ? 'budget' : key.includes('enabled') || key.includes('type') || key.includes('region') ? 'architecture' : 'system', key, value, unit, source_text: `${label} entered in the web form`, confidence: 'high', confirmed: true};
-  }).filter(Boolean);
-}
-function loadValues(requirements) {
-  const map = new Map(requirements.map((item) => [item.key, item.value]));
-  document.querySelectorAll('#requirements-form [data-key]').forEach((input) => {
-    const value = map.get(input.dataset.key);
-    if (input.type === 'checkbox') input.checked = value === 'true';
-    else input.value = value ?? '';
-  });
-}
-async function refreshProjectList() {
-  const projects = await request('/projects');
-  const nav = $('project-list'); nav.replaceChildren();
-  for (const project of projects) {
-    const button = document.createElement('button'); button.type = 'button'; button.className = `project-button${project.id === projectId ? ' active' : ''}`; button.textContent = project.name;
-    button.onclick = () => openProject(project.id); nav.append(button);
-  }
-}
-function putList(id, items, fallback) {
-  const list = $(id); list.replaceChildren();
-  const entries = items?.length ? items : [fallback];
-  for (const item of entries) { const li = document.createElement('li'); li.textContent = item; if (!items?.length) li.className = 'muted'; list.append(li); }
-}
-function number(value, suffix = '') { return value === null || value === undefined ? '—' : `${Number(value).toLocaleString(undefined, {maximumFractionDigits: 2})}${suffix}`; }
-function drawCostChart(data) {
-  const entries = Object.entries(data.cost_breakdown || {});
-  $('chart-empty').classList.toggle('hidden', entries.length > 0);
-  if (costChart) { costChart.destroy(); costChart = null; }
-  if (!entries.length || typeof Chart === 'undefined') return;
-  costChart = new Chart($('cost-chart'), {
-    type: 'doughnut',
-    data: {labels: entries.map(([name]) => name), datasets: [{data: entries.map(([, value]) => value), backgroundColor: ['#73e0b0','#8ba8ff','#f0c878','#d18bff','#ff9295','#50c6d8'], borderColor: '#151c28', borderWidth: 3}]},
-    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {color: '#c4cfde', padding: 18}}, tooltip: {callbacks: {label: (context) => `${context.label}: $${Number(context.raw).toFixed(2)}/month`}}}},
-  });
-}
-function renderResults(data, project) {
-  $('result-title').textContent = `${project.name} · results`;
-  $('result-description').textContent = project.description || 'Backend-generated estimates from the inputs you entered.';
-  $('metric-average').textContent = number(data.average_rps);
-  $('metric-peak').textContent = number(data.peak_rps);
-  $('metric-storage').textContent = number(data.storage_gb);
-  $('metric-cost').textContent = number(data.estimated_monthly_cost_usd, data.estimated_monthly_cost_usd == null ? '' : ' USD');
-  $('metric-budget').textContent = number(data.budget_remaining_usd, data.budget_remaining_usd == null ? '' : ' USD');
-  $('summary').textContent = data.summary;
-  putList('warnings', data.warnings, 'No warnings from the current inputs.');
-  putList('assumptions', data.assumptions, 'No default assumptions were applied.');
-  putList('architecture', data.architecture, 'No architecture selections entered.');
-  drawCostChart(data);
-}
-async function saveAndProcess(event) {
-  event.preventDefault();
-  const name = $('project-name').value.trim();
-  if (!name) return;
-  const description = $('project-description').value.trim();
-  const notes = $('requirements-notes').value.trim();
-  const requirements = readFormValues();
-  try {
-    let project;
-    if (projectId) {
-      project = await request(`/projects/${projectId}`);
-    } else {
-      project = await request('/projects', {method: 'POST', body: JSON.stringify({name, description: description || null, original_requirements: notes || null})});
-      projectId = project.id;
-    }
-    await request(`/projects/${projectId}/requirements`, {method: 'PUT', body: JSON.stringify(requirements)});
-    const result = await request(`/projects/${projectId}/simulate`, {method: 'POST'});
-    project.name = name; project.description = description || null;
-    renderResults(result, project);
-    $('page-title').textContent = 'MVP results'; setView('results'); await refreshProjectList();
-    notify('Requirements saved and processed by the backend.');
-  } catch (error) { notify(error.message, true); }
-}
-async function openProject(id) {
-  try {
-    const project = await request(`/projects/${id}`); projectId = id;
-    $('project-name').value = project.name; $('project-description').value = project.description || ''; $('requirements-notes').value = project.original_requirements || '';
-    loadValues(project.requirements || []);
-    const result = await request(`/projects/${id}/simulate`, {method: 'POST'});
-    renderResults(result, project); $('page-title').textContent = 'MVP results'; setView('results'); await refreshProjectList();
-  } catch (error) { notify(error.message, true); }
-}
-function startNew() {
-  projectId = null; $('requirements-form').reset(); $('page-title').textContent = 'Enter your MVP requirements'; setView('entry');
-}
-$('start-project').addEventListener('click', startNew);
-$('new-project').addEventListener('click', startNew);
-$('edit-inputs').addEventListener('click', () => { $('page-title').textContent = 'Edit MVP requirements'; setView('entry'); });
-$('requirements-form').addEventListener('submit', saveAndProcess);
-(async () => {
-  try { await refreshProjectList(); const projects = await request('/projects'); if (projects.length) await openProject(projects[0].id); else setView('welcome'); }
-  catch (error) { setView('welcome'); notify(`Unable to load the workspace: ${error.message}`, true); }
-})();
+function notice(element,message,error=false){element.textContent=message;element.classList.toggle('error',error);element.classList.remove('hidden');clearTimeout(element._timer);element._timer=setTimeout(()=>element.classList.add('hidden'),5000);}
+function showApp(){ $('auth-view').classList.add('hidden');$('app-view').classList.remove('hidden'); }
+function showAuth(){ $('app-view').classList.add('hidden');$('auth-view').classList.remove('hidden');currentProject=null; }
+function view(name){$('welcome-view').classList.toggle('hidden',name!=='welcome');$('entry-view').classList.toggle('hidden',name!=='entry');$('results-view').classList.toggle('hidden',name!=='results');}
+function setAuthMode(mode){authMode=mode;const registering=mode==='register';$('login-tab').classList.toggle('primary',!registering);$('login-tab').classList.toggle('secondary',registering);$('register-tab').classList.toggle('primary',registering);$('register-tab').classList.toggle('secondary',!registering);$('auth-submit').textContent=registering?'Create account':'Sign in';$('auth-password').autocomplete=registering?'new-password':'current-password';}
+function formRequirements(){return [...document.querySelectorAll('[data-key]')].flatMap(input=>{const key=input.dataset.key;const value=input.type==='checkbox'?String(input.checked):input.value.trim();if(value===''||(input.type==='checkbox'&&!input.checked))return[];const [label,unit]=LABELS[key]||[key,''];const category=key==='budget'||key.includes('cost')?'budget':key.includes('enabled')||key.includes('type')||key.includes('region')?'architecture':'system';return[{category,key,value,unit,source_text:`${label} entered in web form`,confidence:'high',confirmed:true}];});}
+function fillForm(project){$('project-name').value=project.name||'';$('project-description').value=project.description||'';$('requirements-notes').value=project.original_requirements||'';const values=new Map((project.requirements||[]).map(r=>[r.key,r.value]));document.querySelectorAll('[data-key]').forEach(input=>{const val=values.get(input.dataset.key);if(input.type==='checkbox')input.checked=val==='true';else input.value=val??'';});}
+function setList(id,items,empty){const root=$(id);root.replaceChildren();for(const text of items?.length?items:[empty]){const li=document.createElement('li');li.textContent=text;if(!items?.length)li.className='muted';root.append(li);}}
+function fmt(value,suffix=''){return value===null||value===undefined?'—':`${Number(value).toLocaleString(undefined,{maximumFractionDigits:2})}${suffix}`;}
+function renderResults(result,project){$('result-title').textContent=`${project.name} · results`;$('result-description').textContent=project.description||'Estimates calculated from the requirements you supplied.';$('metric-average').textContent=fmt(result.average_rps);$('metric-peak').textContent=fmt(result.peak_rps);$('metric-storage').textContent=fmt(result.storage_gb);$('metric-cost').textContent=fmt(result.estimated_monthly_cost_usd,result.estimated_monthly_cost_usd==null?'':' USD');$('metric-budget').textContent=fmt(result.budget_remaining_usd,result.budget_remaining_usd==null?'':' USD');$('summary').textContent=result.summary;setList('warnings',result.warnings,'No warnings.');setList('assumptions',result.assumptions,'No default assumptions applied.');setList('architecture',result.architecture,'No architecture selections entered.');renderChart(result.cost_breakdown||{});}
+function renderChart(costs){if(chart){chart.destroy();chart=null;}const entries=Object.entries(costs);$('chart-empty').classList.toggle('hidden',entries.length>0);if(!entries.length||typeof Chart==='undefined')return;chart=new Chart($('cost-chart'),{type:'doughnut',data:{labels:entries.map(x=>x[0]),datasets:[{data:entries.map(x=>x[1]),backgroundColor:['#73e0b0','#8ba8ff','#f0c878','#d18bff','#ff9295','#50c6d8'],borderColor:'#151c28',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#c4cfde',padding:18}}}}});}
+async function loadProjectList(){const projects=await api('/projects');const mine=$('project-list'),shared=$('shared-list');mine.replaceChildren();shared.replaceChildren();for(const project of projects){const button=document.createElement('button');button.type='button';button.className='project-button';button.textContent=project.name;button.addEventListener('click',()=>openProject(project.id));(project.user_id===currentUser.id?mine:shared).append(button);}if(!mine.children.length){const p=document.createElement('span');p.className='muted small';p.textContent='No projects yet';mine.append(p);}if(!shared.children.length){const p=document.createElement('span');p.className='muted small';p.textContent='None shared';shared.append(p);}}
+async function loadMembers(project){const isOwner=project.user_id===currentUser.id;const controls=$('share-controls');controls.classList.toggle('hidden',!isOwner);$('delete-project').classList.toggle('hidden',!isOwner);const list=$('member-list');list.replaceChildren();if(!isOwner){const hint=document.createElement('li');hint.className='muted';hint.textContent='Only the owner can invite or remove members.';list.append(hint);return;}try{const members=await api(`/projects/${project.id}/members`);for(const member of members){const li=document.createElement('li');const label=document.createElement('span');label.textContent=`${member.username} · ${member.role}`;li.append(label);if(member.role!=='owner'){const remove=document.createElement('button');remove.type='button';remove.className='button quiet remove-member';remove.textContent='Remove';remove.onclick=async()=>{try{await api(`/projects/${project.id}/members/${member.user_id}`,{method:'DELETE'});await loadMembers(project);}catch(e){notice($('app-notice'),e.message,true);}};li.append(remove);}list.append(li);}}catch(e){notice($('app-notice'),e.message,true);}}
+async function openProject(id){try{const project=await api(`/projects/${id}`);currentProject=project;fillForm(project);$('page-title').textContent=project.name;await loadMembers(project);const result=await api(`/projects/${id}/simulate`,{method:'POST'});renderResults(result,project);view('results');await loadProjectList();}catch(e){if(e.message.includes('sign in'))showAuth();else notice($('app-notice'),e.message,true);}}
+function newProject(){currentProject=null;$('project-form').reset();$('member-list').replaceChildren();$('share-controls').classList.add('hidden');$('delete-project').classList.add('hidden');$('page-title').textContent='New MVP requirements';view('entry');}
+async function saveProject(event){event.preventDefault();const button=event.submitter;button.disabled=true;const payload={name:$('project-name').value.trim(),description:$('project-description').value.trim()||null,original_requirements:$('requirements-notes').value.trim()||null};try{let project;if(currentProject){project=await api(`/projects/${currentProject.id}`,{method:'PUT',body:JSON.stringify(payload)});}else{project=await api('/projects',{method:'POST',body:JSON.stringify(payload)});currentProject=project;}await api(`/projects/${project.id}/requirements`,{method:'PUT',body:JSON.stringify(formRequirements())});project=await api(`/projects/${project.id}`);currentProject=project;const result=await api(`/projects/${project.id}/simulate`,{method:'POST'});renderResults(result,project);$('page-title').textContent='Simulation results';view('results');await loadMembers(project);await loadProjectList();notice($('app-notice'),'Inputs saved and processed by the backend.');}catch(e){notice($('app-notice'),e.message,true);}finally{button.disabled=false;}}
+async function authenticate(event){event.preventDefault();const button=$('auth-submit');button.disabled=true;try{const payload={username:$('auth-username').value.trim(),password:$('auth-password').value};await api(`/auth/${authMode==='register'?'register':'login'}`,{method:'POST',body:JSON.stringify(payload)});$('auth-form').reset();await initializeAuthenticated();}catch(e){notice($('auth-notice'),e.message,true);}finally{button.disabled=false;}}
+async function initializeAuthenticated(){currentUser=await api('/auth/me');$('username-label').textContent=currentUser.username;showApp();await loadProjectList();view('welcome');}
+$('login-tab').addEventListener('click',()=>setAuthMode('login'));$('register-tab').addEventListener('click',()=>setAuthMode('register'));$('auth-form').addEventListener('submit',authenticate);$('new-project').addEventListener('click',newProject);$('welcome-new').addEventListener('click',newProject);$('project-form').addEventListener('submit',saveProject);$('edit-inputs').addEventListener('click',()=>view('entry'));
+$('logout-button').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});}catch{}currentUser=null;showAuth();view('welcome');});
+$('delete-project').addEventListener('click',async()=>{if(!currentProject||!window.confirm(`Delete “${currentProject.name}” and its data?`))return;try{await api(`/projects/${currentProject.id}`,{method:'DELETE'});currentProject=null;await loadProjectList();view('welcome');notice($('app-notice'),'Project deleted.');}catch(e){notice($('app-notice'),e.message,true);}});
+$('invite-button').addEventListener('click',async()=>{if(!currentProject)return;const username=$('invite-username').value.trim();if(!username)return notice($('app-notice'),'Enter a username to invite.',true);try{await api(`/projects/${currentProject.id}/members`,{method:'POST',body:JSON.stringify({username,role:$('invite-role').value})});$('invite-username').value='';await loadMembers(currentProject);notice($('app-notice'),`Shared with ${username}.`);}catch(e){notice($('app-notice'),e.message,true);}});
+(async()=>{setAuthMode('login');try{await initializeAuthenticated();}catch{showAuth();}})();
