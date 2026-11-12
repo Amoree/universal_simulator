@@ -1,163 +1,95 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Requirements Simulator</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-  </head>
-  <body>
-    <div class="layout">
-      <aside class="sidebar">
-        <div class="brand-row">
-          <div class="brand-mark">R</div>
-          <div>
-            <div class="brand-title">ReqSim</div>
-            <div class="brand-subtitle">software planning</div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MVP Requirements Simulator</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-icon">M</span><span>MVP Simulator<small>SOFTWARE PLANNING</small></span></a>
+      <button id="new-project" class="button primary full">＋ New requirements</button>
+      <div class="nav-label">SAVED PROJECTS</div>
+      <nav id="project-list" class="project-list" aria-label="Saved projects"></nav>
+      <div class="side-note">Enter requirements here. The backend runs all calculations and returns estimates with assumptions.</div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><div class="eyebrow">MVP PLANNING WORKSPACE</div><h1 id="page-title">Enter your MVP requirements</h1></div><div class="processing"><span></span> Backend processing</div></header>
+      <div id="notice" class="notice hidden" role="status"></div>
+
+      <section id="welcome" class="welcome card">
+        <div class="eyebrow">REQUIREMENTS IN · ANALYSIS OUT</div>
+        <h2>Describe your MVP.<br/>Get a structured feasibility view.</h2>
+        <p>Enter product, workload, schedule, budget, and architecture inputs. The server calculates workload, storage, and component cost estimates.</p>
+        <button id="start-project" class="button primary">Enter MVP requirements <span>→</span></button>
+      </section>
+
+      <section id="entry-view" class="hidden">
+        <form id="requirements-form">
+          <div class="page-heading"><div><div class="eyebrow">DATA ENTRY</div><h2>Define the MVP inputs</h2><p>Unknown values can stay blank. Estimates will only use the inputs you provide.</p></div><button class="button primary submit-button" type="submit">Process requirements <span>→</span></button></div>
+          <div class="form-grid">
+            <section class="card form-section"><div class="section-heading"><span class="number">01</span><div><h3>Project overview</h3><p>Identify the product and its target users.</p></div></div>
+              <label>Project name<input id="project-name" required maxlength="200" placeholder="e.g. Team Planner MVP" /></label>
+              <label>Product summary<textarea id="project-description" rows="3" placeholder="What does the MVP do and who is it for?"></textarea></label>
+              <label>Requirements notes <span class="hint">Optional — used as source context</span><textarea id="requirements-notes" rows="3" placeholder="Constraints, integrations, compliance needs, or other context"></textarea></label>
+            </section>
+            <section class="card form-section"><div class="section-heading"><span class="number">02</span><div><h3>Usage &amp; data</h3><p>Workload and retention inputs for the server-side model.</p></div></div>
+              <div class="fields two-col">
+                <label>Expected users<input data-key="users" type="number" min="0" step="any" placeholder="e.g. 10000" /><small>users</small></label>
+                <label>Daily events / requests<input data-key="daily_events" type="number" min="0" step="any" placeholder="e.g. 500000" /><small>per day</small></label>
+                <label>Peak traffic factor<input data-key="peak_factor" type="number" min="0.01" step="any" placeholder="e.g. 3" /><small>× average load</small></label>
+                <label>Data retention<input data-key="retention_days" type="number" min="0" step="any" placeholder="e.g. 90" /><small>days</small></label>
+                <label>Average event size<input data-key="avg_event_size_kb" type="number" min="0" step="any" placeholder="e.g. 2" /><small>KB per event</small></label>
+                <label>Response-time target<input data-key="response_time_ms" type="number" min="0" step="any" placeholder="e.g. 250" /><small>milliseconds (target only)</small></label>
+              </div>
+            </section>
+            <section class="card form-section"><div class="section-heading"><span class="number">03</span><div><h3>Budget &amp; timeline</h3><p>Set constraints; budget is compared with your entered component prices.</p></div></div>
+              <div class="fields two-col">
+                <label>Monthly infrastructure budget<input data-key="budget" type="number" min="0" step="0.01" placeholder="e.g. 1200" /><small>USD / month</small></label>
+                <label>Target launch timeline<input data-key="launch_weeks" type="number" min="0" step="any" placeholder="e.g. 8" /><small>weeks (planning input)</small></label>
+                <label>Availability target<input data-key="availability_target" type="text" placeholder="e.g. 99.9%" /><small>target, not a modeled guarantee</small></label>
+              </div>
+            </section>
+            <section class="card form-section"><div class="section-heading"><span class="number">04</span><div><h3>Architecture assumptions</h3><p>Choose an initial shape and optionally enter monthly prices.</p></div></div>
+              <div class="fields two-col">
+                <label>Database<select data-key="database_type"><option value="">Not decided</option><option>PostgreSQL</option><option>MySQL</option><option>SQLite</option><option>MongoDB</option><option>Other / managed service</option></select></label>
+                <label>Deployment region<input data-key="deployment_region" type="text" placeholder="e.g. US East" /></label>
+                <label>Application instances<input data-key="compute_instances" type="number" min="0" step="1" placeholder="e.g. 2" /><small>instances</small></label>
+                <label>Cost per application instance<input data-key="compute_unit_cost" type="number" min="0" step="0.01" placeholder="e.g. 35" /><small>USD / instance / month</small></label>
+                <label>Database monthly cost<input data-key="database_monthly_cost" type="number" min="0" step="0.01" placeholder="e.g. 80" /><small>USD / month</small></label>
+                <label>Cache monthly cost<input data-key="cache_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
+                <label>Queue monthly cost<input data-key="queue_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
+                <label>Storage price<input data-key="storage_cost_per_gb" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / GB / month</small></label>
+                <label>Networking allowance<input data-key="network_monthly_cost" type="number" min="0" step="0.01" placeholder="Optional" /><small>USD / month</small></label>
+                <label class="check-label"><input data-key="cache_enabled" type="checkbox" /> Include a cache in the proposed design</label>
+                <label class="check-label"><input data-key="queue_enabled" type="checkbox" /> Include a background queue</label>
+              </div>
+            </section>
           </div>
+          <div class="submit-bottom"><span class="hint">Your entries are saved to this simulator project.</span><button class="button primary" type="submit">Process requirements <span>→</span></button></div>
+        </form>
+      </section>
+
+      <section id="results-view" class="hidden">
+        <div class="results-header"><div><div class="eyebrow">BACKEND ANALYSIS</div><h2 id="result-title">Simulation results</h2><p id="result-description" class="muted"></p></div><button id="edit-inputs" class="button secondary">Edit inputs</button></div>
+        <div class="metric-grid">
+          <article class="metric-card"><span>Average workload</span><strong id="metric-average">—</strong><small>requests / second</small></article>
+          <article class="metric-card"><span>Peak workload</span><strong id="metric-peak">—</strong><small>requests / second</small></article>
+          <article class="metric-card"><span>Retained data</span><strong id="metric-storage">—</strong><small>estimated GB</small></article>
+          <article class="metric-card"><span>Estimated component cost</span><strong id="metric-cost">—</strong><small>USD / month</small></article>
+          <article class="metric-card"><span>Budget remaining</span><strong id="metric-budget">—</strong><small>after modeled costs</small></article>
         </div>
-        <button id="new-project" class="button primary">+ New project</button>
-        <div class="label">Projects</div>
-        <nav id="project-list" class="project-list"></nav>
-      </aside>
-
-      <main class="main">
-        <div id="notice" class="notice hidden"></div>
-
-        <section id="welcome" class="card welcome">
-          <div class="eyebrow">Requirements → decisions</div>
-          <h1>Turn project requirements into structured decisions.</h1>
-          <p>Describe a system, review extracted assumptions, run a baseline simulation, and compare what-if scenarios with transparent calculations.</p>
-          <button id="start-project" class="button primary">Create your first project</button>
-        </section>
-
-        <section id="create-form-panel" class="card hidden">
-          <div class="eyebrow">Create project</div>
-          <h2>New software project</h2>
-          <form id="project-form">
-            <label>
-              Project name
-              <input id="project-name" required placeholder="e.g. Project Tracker" />
-            </label>
-            <label>
-              Description
-              <input id="project-description" placeholder="What are you building?" />
-            </label>
-            <label>
-              Requirements text
-              <textarea id="project-text" rows="6" placeholder="Example: SaaS app for 10,000 users, 500,000 events/day, 90-day retention, monthly budget $1,200."></textarea>
-            </label>
-            <div class="form-actions">
-              <button type="button" id="cancel-create" class="button muted">Cancel</button>
-              <button type="submit" class="button primary">Create project</button>
-            </div>
-          </form>
-        </section>
-
-        <section id="dashboard" class="hidden">
-          <div class="toolbar">
-            <div>
-              <div class="eyebrow">Project dashboard</div>
-              <h2 id="project-title">Project title</h2>
-            </div>
-            <button id="run-baseline" class="button primary">Run baseline</button>
-          </div>
-
-          <div class="metrics">
-            <div class="metric">
-              <span>Average load</span>
-              <strong id="metric-average">—</strong>
-              <small>rps</small>
-            </div>
-            <div class="metric">
-              <span>Peak load</span>
-              <strong id="metric-peak">—</strong>
-              <small>rps</small>
-            </div>
-            <div class="metric">
-              <span>Storage</span>
-              <strong id="metric-storage">—</strong>
-              <small>GB</small>
-            </div>
-            <div class="metric">
-              <span>Budget</span>
-              <strong id="metric-budget">—</strong>
-              <small>USD/month</small>
-            </div>
-          </div>
-
-          <div class="detail-grid">
-            <article class="card">
-              <div class="card-header">
-                <div>
-                  <div class="eyebrow">Inputs</div>
-                  <h3>Requirements</h3>
-                </div>
-                <button id="extract-btn" class="button secondary">Extract</button>
-              </div>
-              <textarea id="source-text" rows="5" placeholder="Paste or edit requirements here..."></textarea>
-              <div id="requirements-list" class="requirements-list"></div>
-              <div class="form-actions right">
-                <button id="save-requirements" class="button primary">Save requirements</button>
-              </div>
-            </article>
-
-            <article class="card">
-              <div class="eyebrow">Results</div>
-              <h3>Baseline summary</h3>
-              <p id="result-summary" class="summary">No simulation run yet.</p>
-              <div class="columns">
-                <div>
-                  <h4>Assumptions</h4>
-                  <ul id="assumptions-list">
-                    <li>None</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4>Warnings</h4>
-                  <ul id="warnings-list">
-                    <li>None</li>
-                  </ul>
-                </div>
-              </div>
-            </article>
-
-            <article class="card full-span">
-              <div class="card-header">
-                <div>
-                  <div class="eyebrow">Scenario analysis</div>
-                  <h3>What-if comparison</h3>
-                </div>
-              </div>
-
-              <form id="scenario-form" class="scenario-form">
-                <label>
-                  Scenario name
-                  <input id="scenario-name" required placeholder="e.g. 2× traffic" />
-                </label>
-                <label>
-                  Scale daily events
-                  <input id="scenario-events" type="number" min="0" step="any" placeholder="Optional" />
-                </label>
-                <label>
-                  Peak factor
-                  <input id="scenario-peak" type="number" min="0" step="any" placeholder="Optional" />
-                </label>
-                <label>
-                  Retention days
-                  <input id="scenario-retention" type="number" min="0" step="any" placeholder="Optional" />
-                </label>
-                <button class="button secondary" type="submit">Add scenario</button>
-              </form>
-
-              <div id="scenario-results" class="scenario-results"></div>
-              <div id="comparison-chart" class="chart"></div>
-            </article>
-          </div>
-        </section>
-      </main>
-    </div>
-
-    <script src="/static/app.js"></script>
-  </body>
+        <div class="results-grid">
+          <article class="card"><div class="eyebrow">SUMMARY</div><h3>What the inputs indicate</h3><p id="summary" class="summary"></p><h4>Warnings &amp; missing inputs</h4><ul id="warnings"></ul></article>
+          <article class="card"><div class="eyebrow">MODEL TRANSPARENCY</div><h3>Assumptions &amp; architecture</h3><h4>Calculation assumptions</h4><ul id="assumptions"></ul><h4>Architecture entered</h4><ul id="architecture"></ul></article>
+          <article class="card chart-card"><div class="eyebrow">BUDGET MODEL</div><h3>Estimated monthly cost breakdown</h3><div class="chart-container"><canvas id="cost-chart" aria-label="Monthly cost breakdown chart"></canvas></div><p id="chart-empty" class="muted small hidden">Enter component prices to show a cost breakdown.</p></article>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
 </html>

@@ -1,318 +1,127 @@
 const API = '/api';
-let activeProjectId = null;
-let activeProject = null;
-let baselineResult = null;
-let scenarios = [];
-
-const labelMap = {
-  users: 'Users',
-  daily_events: 'Daily events',
-  retention_days: 'Retention days',
-  peak_factor: 'Peak factor',
-  budget: 'Budget',
-  avg_event_size_kb: 'Avg event size (KB)',
-  response_time_ms: 'Response time (ms)',
-  launch_weeks: 'Launch weeks',
-  description: 'Description',
+const labels = {
+  users: ['users', 'users'], daily_events: ['daily events', 'events/day'], peak_factor: ['peak traffic factor', 'x'],
+  retention_days: ['retention', 'days'], avg_event_size_kb: ['average event size', 'KB'], response_time_ms: ['response-time target', 'ms'],
+  budget: ['monthly budget', 'USD/month'], launch_weeks: ['launch timeline', 'weeks'], availability_target: ['availability target', 'target'],
+  database_type: ['database', 'choice'], deployment_region: ['deployment region', 'region'], cache_enabled: ['cache enabled', 'boolean'], queue_enabled: ['queue enabled', 'boolean'],
+  compute_instances: ['application instances', 'instances'], compute_unit_cost: ['compute cost per instance', 'USD/month'], database_monthly_cost: ['database cost', 'USD/month'],
+  cache_monthly_cost: ['cache cost', 'USD/month'], queue_monthly_cost: ['queue cost', 'USD/month'], storage_cost_per_gb: ['storage unit cost', 'USD/GB/month'], network_monthly_cost: ['networking allowance', 'USD/month'],
 };
+let projectId = null;
+let costChart = null;
+const $ = (id) => document.getElementById(id);
 
-const byId = (id) => document.getElementById(id);
-
-function showNotice(message, isError = false) {
-  const notice = byId('notice');
-  notice.textContent = message;
-  notice.classList.toggle('error', isError);
-  notice.classList.remove('hidden');
-  clearTimeout(showNotice.timer);
-  showNotice.timer = setTimeout(() => notice.classList.add('hidden'), 4000);
-}
-
-function renderProjectList(projects) {
-  const list = byId('project-list');
-  list.innerHTML = '';
-  projects.forEach((project) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'project-item' + (project.id === activeProjectId ? ' active' : '');
-    button.textContent = project.name;
-    button.addEventListener('click', () => openProject(project.id));
-    list.appendChild(button);
-  });
-}
-
-async function loadProjects() {
-  const projects = await fetchJson('/projects');
-  renderProjectList(projects);
-}
-
-async function fetchJson(path, options = {}) {
-  const response = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+async function request(path, options = {}) {
+  const response = await fetch(API + path, {headers: {'Content-Type': 'application/json'}, ...options});
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || 'Request failed');
+  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
   return body;
 }
-
-function setView(mode) {
-  const showWelcome = mode === 'welcome';
-  const showCreate = mode === 'create';
-  const showDashboard = mode === 'dashboard';
-  byId('welcome').classList.toggle('hidden', !showWelcome);
-  byId('create-form-panel').classList.toggle('hidden', !showCreate);
-  byId('dashboard').classList.toggle('hidden', !showDashboard);
+function notify(message, error = false) {
+  const el = $('notice'); el.textContent = message; el.classList.toggle('error', error); el.classList.remove('hidden');
+  clearTimeout(notify.timer); notify.timer = setTimeout(() => el.classList.add('hidden'), 5000);
 }
-
-async function openProject(projectId) {
-  activeProjectId = projectId;
-  const project = await fetchJson(`/projects/${projectId}`);
-  activeProject = project;
-  byId('project-title').textContent = project.name;
-  byId('source-text').value = project.original_requirements || '';
-  renderRequirements(project.requirements || []);
-  baselineResult = null;
-  scenarios = [];
-  await loadProjects();
-  renderResult(null);
-  renderScenarios();
-  setView('dashboard');
+function setView(view) {
+  $('welcome').classList.toggle('hidden', view !== 'welcome');
+  $('entry-view').classList.toggle('hidden', view !== 'entry');
+  $('results-view').classList.toggle('hidden', view !== 'results');
 }
-
-function renderRequirements(requirements) {
-  const list = byId('requirements-list');
-  list.innerHTML = '';
-  if (!requirements.length) {
-    const empty = document.createElement('div');
-    empty.textContent = 'No extracted requirements yet.';
-    empty.style.color = '#8ea3ba';
-    list.appendChild(empty);
-    return;
-  }
-  requirements.forEach((req) => {
-    const row = document.createElement('div');
-    row.className = 'requirement-row';
-    const key = document.createElement('div');
-    key.className = 'key';
-    key.textContent = labelMap[req.key] || req.key;
-    const input = document.createElement('input');
-    input.value = req.value || '';
-    input.addEventListener('input', () => {
-      req.value = input.value;
-      req.confirmed = true;
-    });
-    const unit = document.createElement('div');
-    unit.textContent = req.unit || '';
-    unit.style.color = '#8ea3ba';
-    unit.style.fontSize = '11px';
-    row.append(key, input, unit);
-    list.appendChild(row);
+function readFormValues() {
+  return [...document.querySelectorAll('#requirements-form [data-key]')].map((input) => {
+    const key = input.dataset.key;
+    const value = input.type === 'checkbox' ? String(input.checked) : input.value.trim();
+    if (value === '') return null;
+    const [label, unit] = labels[key] || [key, ''];
+    return {category: key.includes('cost') || key === 'budget' ? 'budget' : key.includes('enabled') || key.includes('type') || key.includes('region') ? 'architecture' : 'system', key, value, unit, source_text: `${label} entered in the web form`, confidence: 'high', confirmed: true};
+  }).filter(Boolean);
+}
+function loadValues(requirements) {
+  const map = new Map(requirements.map((item) => [item.key, item.value]));
+  document.querySelectorAll('#requirements-form [data-key]').forEach((input) => {
+    const value = map.get(input.dataset.key);
+    if (input.type === 'checkbox') input.checked = value === 'true';
+    else input.value = value ?? '';
   });
 }
-
-async function extractRequirements() {
-  if (!activeProjectId) return;
-  const text = byId('source-text').value.trim();
-  if (!text) {
-    showNotice('Paste some requirements first.', true);
-    return;
+async function refreshProjectList() {
+  const projects = await request('/projects');
+  const nav = $('project-list'); nav.replaceChildren();
+  for (const project of projects) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = `project-button${project.id === projectId ? ' active' : ''}`; button.textContent = project.name;
+    button.onclick = () => openProject(project.id); nav.append(button);
   }
-  const result = await fetchJson(`/projects/${activeProjectId}/requirements/extract`, {
-    method: 'POST',
-    body: JSON.stringify({ text }),
+}
+function putList(id, items, fallback) {
+  const list = $(id); list.replaceChildren();
+  const entries = items?.length ? items : [fallback];
+  for (const item of entries) { const li = document.createElement('li'); li.textContent = item; if (!items?.length) li.className = 'muted'; list.append(li); }
+}
+function number(value, suffix = '') { return value === null || value === undefined ? '—' : `${Number(value).toLocaleString(undefined, {maximumFractionDigits: 2})}${suffix}`; }
+function drawCostChart(data) {
+  const entries = Object.entries(data.cost_breakdown || {});
+  $('chart-empty').classList.toggle('hidden', entries.length > 0);
+  if (costChart) { costChart.destroy(); costChart = null; }
+  if (!entries.length || typeof Chart === 'undefined') return;
+  costChart = new Chart($('cost-chart'), {
+    type: 'doughnut',
+    data: {labels: entries.map(([name]) => name), datasets: [{data: entries.map(([, value]) => value), backgroundColor: ['#73e0b0','#8ba8ff','#f0c878','#d18bff','#ff9295','#50c6d8'], borderColor: '#151c28', borderWidth: 3}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'bottom', labels: {color: '#c4cfde', padding: 18}}, tooltip: {callbacks: {label: (context) => `${context.label}: $${Number(context.raw).toFixed(2)}/month`}}}},
   });
-  const existing = new Map((activeProject.requirements || []).map((item) => [item.key, item]));
-  for (const item of result.extracted) {
-    if (!existing.has(item.key)) {
-      existing.set(item.key, item);
-    }
-  }
-  activeProject.requirements = Array.from(existing.values());
-  renderRequirements(activeProject.requirements);
-  showNotice(`${result.extracted.length} extraction candidates added. Review and save.`);
 }
-
-async function saveRequirements() {
-  if (!activeProjectId) return;
-  const payload = (activeProject.requirements || []).map((item) => ({
-    category: item.category || 'system',
-    key: item.key,
-    value: item.value ?? '',
-    unit: item.unit ?? null,
-    source_text: item.source_text ?? null,
-    confidence: item.confidence || 'medium',
-    confirmed: !!item.confirmed,
-  }));
-
-  const saved = await fetchJson(`/projects/${activeProjectId}/requirements`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-  activeProject.requirements = saved;
-  renderRequirements(saved);
-  showNotice('Requirements saved.');
+function renderResults(data, project) {
+  $('result-title').textContent = `${project.name} · results`;
+  $('result-description').textContent = project.description || 'Backend-generated estimates from the inputs you entered.';
+  $('metric-average').textContent = number(data.average_rps);
+  $('metric-peak').textContent = number(data.peak_rps);
+  $('metric-storage').textContent = number(data.storage_gb);
+  $('metric-cost').textContent = number(data.estimated_monthly_cost_usd, data.estimated_monthly_cost_usd == null ? '' : ' USD');
+  $('metric-budget').textContent = number(data.budget_remaining_usd, data.budget_remaining_usd == null ? '' : ' USD');
+  $('summary').textContent = data.summary;
+  putList('warnings', data.warnings, 'No warnings from the current inputs.');
+  putList('assumptions', data.assumptions, 'No default assumptions were applied.');
+  putList('architecture', data.architecture, 'No architecture selections entered.');
+  drawCostChart(data);
 }
-
-async function runBaseline() {
-  if (!activeProjectId) return;
-  const result = await fetchJson(`/projects/${activeProjectId}/simulate`, { method: 'POST' });
-  baselineResult = result;
-  renderResult(result);
-  showNotice('Baseline simulation complete.');
-}
-
-function renderResult(result) {
-  byId('metric-average').textContent = result && result.average_rps !== null ? Number(result.average_rps).toFixed(3) : '—';
-  byId('metric-peak').textContent = result && result.peak_rps !== null ? Number(result.peak_rps).toFixed(3) : '—';
-  byId('metric-storage').textContent = result && result.storage_gb !== null ? Number(result.storage_gb).toFixed(2) : '—';
-  byId('metric-budget').textContent = result && result.monthly_budget_usd !== null ? '$' + Number(result.monthly_budget_usd).toFixed(2) : '—';
-  byId('result-summary').textContent = result ? result.summary : 'No simulation run yet.';
-  const assumptions = byId('assumptions-list');
-  const warnings = byId('warnings-list');
-  assumptions.innerHTML = result && result.assumptions?.length ? result.assumptions.map((s) => `<li>${s}</li>`).join('') : '<li>None</li>';
-  warnings.innerHTML = result && result.warnings?.length ? result.warnings.map((s) => `<li>${s}</li>`).join('') : '<li>None</li>';
-}
-
-async function createScenario(event) {
+async function saveAndProcess(event) {
   event.preventDefault();
-  if (!activeProjectId) return;
-  const overrides = {};
-  const dailyEvents = byId('scenario-events').value.trim();
-  const peakFactor = byId('scenario-peak').value.trim();
-  const retention = byId('scenario-retention').value.trim();
-  if (dailyEvents) overrides.daily_events = Number(dailyEvents);
-  if (peakFactor) overrides.peak_factor = Number(peakFactor);
-  if (retention) overrides.retention_days = Number(retention);
-  if (!Object.keys(overrides).length) {
-    showNotice('Enter at least one override to create a scenario.', true);
-    return;
-  }
-  const payload = {
-    name: byId('scenario-name').value.trim(),
-    description: 'Scenario created from the dashboard',
-    overrides,
-  };
-  const created = await fetchJson(`/projects/${activeProjectId}/scenarios`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  const result = await fetchJson(`/projects/${activeProjectId}/scenarios/${created.id}/simulate`, { method: 'POST' });
-  scenarios.push({ ...created, result });
-  byId('scenario-form').reset();
-  renderScenarios();
-  showNotice('Scenario created and simulated.');
-}
-
-function renderScenarios() {
-  const root = byId('scenario-results');
-  root.innerHTML = '';
-  if (!scenarios.length) {
-    root.innerHTML = '<div class="muted">No scenarios yet.</div>';
-    drawChart();
-    return;
-  }
-
-  scenarios.forEach((s) => {
-    const row = document.createElement('div');
-    row.className = 'scenario-row';
-    const name = document.createElement('div');
-    name.innerHTML = `<strong>${s.name}</strong><small>${Object.entries(s.overrides).map(([k, v]) => `${labelMap[k] || k}: ${v}`).join(' • ')}</small>`;
-    const avg = document.createElement('div');
-    avg.innerHTML = `<strong>${s.result?.average_rps !== null ? Number(s.result.average_rps).toFixed(3) : '—'}</strong><small>avg rps</small>`;
-    const peak = document.createElement('div');
-    peak.innerHTML = `<strong>${s.result?.peak_rps !== null ? Number(s.result.peak_rps).toFixed(3) : '—'}</strong><small>peak rps</small>`;
-    const storage = document.createElement('div');
-    storage.innerHTML = `<strong>${s.result?.storage_gb !== null ? Number(s.result.storage_gb).toFixed(2) : '—'}</strong><small>GB</small>`;
-    row.append(name, avg, peak, storage);
-    root.appendChild(row);
-  });
-
-  drawChart();
-}
-
-function drawChart() {
-  const root = byId('comparison-chart');
-  root.innerHTML = '';
-  if (!baselineResult) {
-    root.innerHTML = '<div class="muted">Run the baseline before comparing scenarios.</div>';
-    return;
-  }
-  const series = [{ name: 'Baseline', result: baselineResult, alt: false }, ...scenarios.map((s) => ({ name: s.name, result: s.result, alt: true }))];
-  const max = Math.max(...series.map((item) => Number(item.result?.peak_rps || 0)), 1);
-
-  series.forEach((item) => {
-    const row = document.createElement('div');
-    row.className = 'bar-row';
-    const label = document.createElement('span');
-    label.textContent = item.name;
-    const track = document.createElement('div');
-    track.className = 'bar-track';
-    const fill = document.createElement('div');
-    fill.className = 'bar-fill' + (item.alt ? ' alt' : '');
-    const value = Number(item.result?.peak_rps || 0);
-    fill.style.width = `${(value / max) * 100}%`;
-    track.appendChild(fill);
-    const valueText = document.createElement('span');
-    valueText.textContent = value ? `${value.toFixed(2)} rps` : '—';
-    row.append(label, track, valueText);
-    root.appendChild(row);
-  });
-}
-
-async function init() {
+  const name = $('project-name').value.trim();
+  if (!name) return;
+  const description = $('project-description').value.trim();
+  const notes = $('requirements-notes').value.trim();
+  const requirements = readFormValues();
   try {
-    const projects = await fetchJson('/projects');
-    renderProjectList(projects);
-    if (projects.length) {
-      await openProject(projects[0].id);
+    let project;
+    if (projectId) {
+      project = await request(`/projects/${projectId}`);
     } else {
-      setView('welcome');
+      project = await request('/projects', {method: 'POST', body: JSON.stringify({name, description: description || null, original_requirements: notes || null})});
+      projectId = project.id;
     }
-  } catch (error) {
-    showNotice(`Could not connect to the API: ${error.message}`, true);
-    setView('welcome');
-  }
+    await request(`/projects/${projectId}/requirements`, {method: 'PUT', body: JSON.stringify(requirements)});
+    const result = await request(`/projects/${projectId}/simulate`, {method: 'POST'});
+    project.name = name; project.description = description || null;
+    renderResults(result, project);
+    $('page-title').textContent = 'MVP results'; setView('results'); await refreshProjectList();
+    notify('Requirements saved and processed by the backend.');
+  } catch (error) { notify(error.message, true); }
 }
-
-byId('new-project').addEventListener('click', () => {
-  activeProjectId = null;
-  setView('create');
-  byId('project-form').reset();
-});
-byId('start-project').addEventListener('click', () => {
-  activeProjectId = null;
-  setView('create');
-});
-byId('cancel-create').addEventListener('click', () => {
-  if (activeProjectId) {
-    setView('dashboard');
-  } else {
-    setView('welcome');
-  }
-});
-
-byId('project-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const payload = {
-    name: byId('project-name').value.trim(),
-    description: byId('project-description').value.trim() || null,
-    original_requirements: byId('project-text').value.trim() || null,
-  };
+async function openProject(id) {
   try {
-    const project = await fetchJson('/projects', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    await openProject(project.id);
-    showNotice('Project created.');
-  } catch (error) {
-    showNotice(error.message, true);
-  }
-});
-
-byId('extract-btn').addEventListener('click', extractRequirements);
-byId('save-requirements').addEventListener('click', saveRequirements);
-byId('run-baseline').addEventListener('click', runBaseline);
-byId('scenario-form').addEventListener('submit', createScenario);
-
-init();
+    const project = await request(`/projects/${id}`); projectId = id;
+    $('project-name').value = project.name; $('project-description').value = project.description || ''; $('requirements-notes').value = project.original_requirements || '';
+    loadValues(project.requirements || []);
+    const result = await request(`/projects/${id}/simulate`, {method: 'POST'});
+    renderResults(result, project); $('page-title').textContent = 'MVP results'; setView('results'); await refreshProjectList();
+  } catch (error) { notify(error.message, true); }
+}
+function startNew() {
+  projectId = null; $('requirements-form').reset(); $('page-title').textContent = 'Enter your MVP requirements'; setView('entry');
+}
+$('start-project').addEventListener('click', startNew);
+$('new-project').addEventListener('click', startNew);
+$('edit-inputs').addEventListener('click', () => { $('page-title').textContent = 'Edit MVP requirements'; setView('entry'); });
+$('requirements-form').addEventListener('submit', saveAndProcess);
+(async () => {
+  try { await refreshProjectList(); const projects = await request('/projects'); if (projects.length) await openProject(projects[0].id); else setView('welcome'); }
+  catch (error) { setView('welcome'); notify(`Unable to load the workspace: ${error.message}`, true); }
+})();

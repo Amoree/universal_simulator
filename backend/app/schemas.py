@@ -11,8 +11,8 @@ class RequirementInput(BaseModel):
     value: str | None = None
     unit: str | None = None
     source_text: str | None = None
-    confidence: Literal["low", "medium", "high"] = "medium"
-    confirmed: bool = False
+    confidence: Literal["low", "medium", "high"] = "high"
+    confirmed: bool = True
 
 
 class RequirementRead(RequirementInput):
@@ -30,7 +30,7 @@ class ProjectCreate(BaseModel):
 class ProjectRead(ProjectCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    requirements: list[RequirementRead] = []
+    requirements: list[RequirementRead] = Field(default_factory=list)
 
 
 class ExtractionRequest(BaseModel):
@@ -40,7 +40,7 @@ class ExtractionRequest(BaseModel):
 class ScenarioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
-    overrides: dict[str, float] = {}
+    overrides: dict[str, float] = Field(default_factory=dict)
 
 
 class ScenarioRead(BaseModel):
@@ -59,5 +59,9 @@ class SimulationResult(BaseModel):
     peak_rps: float | None = None
     storage_gb: float | None = None
     monthly_budget_usd: float | None = None
-    warnings: list[str]
-    assumptions: list[str]
+    estimated_monthly_cost_usd: float | None = None
+    budget_remaining_usd: float | None = None
+    cost_breakdown: dict[str, float] = Field(default_factory=dict)
+    architecture: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
