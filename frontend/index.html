@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Requirements Simulator</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand-row">
+          <div class="brand-mark">R</div>
+          <div>
+            <div class="brand-title">ReqSim</div>
+            <div class="brand-subtitle">software planning</div>
+          </div>
+        </div>
+        <button id="new-project" class="button primary">+ New project</button>
+        <div class="label">Projects</div>
+        <nav id="project-list" class="project-list"></nav>
+      </aside>
+
+      <main class="main">
+        <div id="notice" class="notice hidden"></div>
+
+        <section id="welcome" class="card welcome">
+          <div class="eyebrow">Requirements → decisions</div>
+          <h1>Turn project requirements into structured decisions.</h1>
+          <p>Describe a system, review extracted assumptions, run a baseline simulation, and compare what-if scenarios with transparent calculations.</p>
+          <button id="start-project" class="button primary">Create your first project</button>
+        </section>
+
+        <section id="create-form-panel" class="card hidden">
+          <div class="eyebrow">Create project</div>
+          <h2>New software project</h2>
+          <form id="project-form">
+            <label>
+              Project name
+              <input id="project-name" required placeholder="e.g. Project Tracker" />
+            </label>
+            <label>
+              Description
+              <input id="project-description" placeholder="What are you building?" />
+            </label>
+            <label>
+              Requirements text
+              <textarea id="project-text" rows="6" placeholder="Example: SaaS app for 10,000 users, 500,000 events/day, 90-day retention, monthly budget $1,200."></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="button" id="cancel-create" class="button muted">Cancel</button>
+              <button type="submit" class="button primary">Create project</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="dashboard" class="hidden">
+          <div class="toolbar">
+            <div>
+              <div class="eyebrow">Project dashboard</div>
+              <h2 id="project-title">Project title</h2>
+            </div>
+            <button id="run-baseline" class="button primary">Run baseline</button>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <span>Average load</span>
+              <strong id="metric-average">—</strong>
+              <small>rps</small>
+            </div>
+            <div class="metric">
+              <span>Peak load</span>
+              <strong id="metric-peak">—</strong>
+              <small>rps</small>
+            </div>
+            <div class="metric">
+              <span>Storage</span>
+              <strong id="metric-storage">—</strong>
+              <small>GB</small>
+            </div>
+            <div class="metric">
+              <span>Budget</span>
+              <strong id="metric-budget">—</strong>
+              <small>USD/month</small>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <article class="card">
+              <div class="card-header">
+                <div>
+                  <div class="eyebrow">Inputs</div>
+                  <h3>Requirements</h3>
+                </div>
+                <button id="extract-btn" class="button secondary">Extract</button>
+              </div>
+              <textarea id="source-text" rows="5" placeholder="Paste or edit requirements here..."></textarea>
+              <div id="requirements-list" class="requirements-list"></div>
+              <div class="form-actions right">
+                <button id="save-requirements" class="button primary">Save requirements</button>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="eyebrow">Results</div>
+              <h3>Baseline summary</h3>
+              <p id="result-summary" class="summary">No simulation run yet.</p>
+              <div class="columns">
+                <div>
+                  <h4>Assumptions</h4>
+                  <ul id="assumptions-list">
+                    <li>None</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4>Warnings</h4>
+                  <ul id="warnings-list">
+                    <li>None</li>
+                  </ul>
+                </div>
+              </div>
+            </article>
+
+            <article class="card full-span">
+              <div class="card-header">
+                <div>
+                  <div class="eyebrow">Scenario analysis</div>
+                  <h3>What-if comparison</h3>
+                </div>
+              </div>
+
+              <form id="scenario-form" class="scenario-form">
+                <label>
+                  Scenario name
+                  <input id="scenario-name" required placeholder="e.g. 2× traffic" />
+                </label>
+                <label>
+                  Scale daily events
+                  <input id="scenario-events" type="number" min="0" step="any" placeholder="Optional" />
+                </label>
+                <label>
+                  Peak factor
+                  <input id="scenario-peak" type="number" min="0" step="any" placeholder="Optional" />
+                </label>
+                <label>
+                  Retention days
+                  <input id="scenario-retention" type="number" min="0" step="any" placeholder="Optional" />
+                </label>
+                <button class="button secondary" type="submit">Add scenario</button>
+              </form>
+
+              <div id="scenario-results" class="scenario-results"></div>
+              <div id="comparison-chart" class="chart"></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
