@@ -25,6 +25,16 @@ def client():
         finally:
             db.close()
 
+    # In the client fixture:
+with TestClient(app, headers={"Origin": "http://testserver"}) as test_client:
+    yield test_client
+
+# In test_auth_project_flow_and_ownership_sharing:
+guest = register(
+    TestClient(app, headers={"Origin": "http://testserver"}),
+    "guest_user",
+)
+
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as test_client:
         yield test_client
