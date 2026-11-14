@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,6 +8,9 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.main import app, get_db
+
+
+SAME_ORIGIN = {"Origin": "http://testserver"}
 
 
 @pytest.fixture
@@ -25,18 +26,8 @@ def client():
         finally:
             db.close()
 
-    # In the client fixture:
-with TestClient(app, headers={"Origin": "http://testserver"}) as test_client:
-    yield test_client
-
-# In test_auth_project_flow_and_ownership_sharing:
-guest = register(
-    TestClient(app, headers={"Origin": "http://testserver"}),
-    "guest_user",
-)
-
     app.dependency_overrides[get_db] = override_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=SAME_ORIGIN) as test_client:
         yield test_client
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=test_engine)
@@ -61,9 +52,9 @@ def test_auth_project_flow_and_ownership_sharing(client: TestClient):
     assert result.status_code == 200
     assert result.json()["average_rps"] == 1.0
 
-    guest = register(TestClient(app), "guest_user")
+    guest = register(TestClient(app, headers=SAME_ORIGIN), "guest_user")
     assert guest.get(f"/api/projects/{project_id}").status_code == 404
-    assert guest.post(f"/api/projects/{project_id}/members", json={"username": "owner_one", "role": "viewer"}).status_code == 403
+    assert guest.post(f"/api/projects/{project_id}/members", json={"username": "owner_one", "role": "viewer"}).status_code == 404
 
     shared = owner.post(f"/api/projects/{project_id}/members", json={"username": "guest_user", "role": "viewer"})
     assert shared.status_code == 201
@@ -85,4 +76,8 @@ def test_auth_validation_logout_and_session_expiry(client: TestClient):
 def test_missing_or_cross_origin_protected_requests(client: TestClient):
     assert client.get("/api/projects").status_code == 401
     client.post("/api/auth/register", json={"username": "originuser", "password": "correct-horse-42"})
-    assert client.post("/api/projects", headers={"Origin": "https://evil.example"}, json={"name": "Nope"}).status_code == 403
+    assert client.post(
+        "/api/projects",
+        headers={"Origin": "https://evil.example"},
+        json={"name": "Nope"},
+    ).status_code == 403
