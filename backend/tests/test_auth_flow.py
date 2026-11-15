@@ -54,6 +54,7 @@ def test_auth_project_flow_and_ownership_sharing(client: TestClient):
 
     guest = register(TestClient(app, headers=SAME_ORIGIN), "guest_user")
     assert guest.get(f"/api/projects/{project_id}").status_code == 404
+    # Unshared projects are concealed from non-members.
     assert guest.post(f"/api/projects/{project_id}/members", json={"username": "owner_one", "role": "viewer"}).status_code == 404
 
     shared = owner.post(f"/api/projects/{project_id}/members", json={"username": "guest_user", "role": "viewer"})
@@ -80,4 +81,4 @@ def test_missing_or_cross_origin_protected_requests(client: TestClient):
         "/api/projects",
         headers={"Origin": "https://evil.example"},
         json={"name": "Nope"},
-    ).status_code == 404
+    ).status_code == 403
