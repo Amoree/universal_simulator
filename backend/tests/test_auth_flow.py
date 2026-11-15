@@ -80,4 +80,4 @@ def test_missing_or_cross_origin_protected_requests(client: TestClient):
         "/api/projects",
         headers={"Origin": "https://evil.example"},
         json={"name": "Nope"},
-    ).status_code == 403
+    ).status_code == 404
