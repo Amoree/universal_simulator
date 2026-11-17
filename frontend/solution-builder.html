@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>Solution Blueprint Builder · Universal Simulator</title>
+  <style>
+    :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e8eef8;background:#101827;font-synthesis:none}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1100px;margin:auto;padding:36px 22px 70px}.eyebrow{font-size:.76rem;letter-spacing:.13em;color:#69d5bd;font-weight:700}.top{margin-bottom:26px}.top h1{font-size:clamp(2rem,5vw,3.2rem);margin:.45rem 0}.muted{color:#a7b3c5;line-height:1.55}.panel,.card{background:#182438;border:1px solid #293950;border-radius:16px;padding:22px;margin:18px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}label{display:block;font-weight:650;margin-bottom:8px}textarea,input,select{width:100%;border:1px solid #3a4b64;border-radius:9px;background:#0f1929;color:#eef4fc;padding:12px;font:inherit}textarea{min-height:180px;resize:vertical;line-height:1.5}input,select{margin-top:7px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.button{border:0;border-radius:9px;padding:11px 16px;font:inherit;font-weight:700;cursor:pointer;background:#67d4ba;color:#10201f}.button.secondary{background:#2b3c55;color:#e8eef8}.button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #69d5bd;outline-offset:2px}.results{display:none}.results.visible{display:block}.result-head{display:flex;justify-content:space-between;align-items:start;gap:15px}.result-head h2{margin:7px 0}.tag{display:inline-block;background:#203d46;color:#a6f1dc;padding:5px 9px;border-radius:999px;font-size:.8rem;margin:4px 5px 2px 0}.card h3{margin:0 0 12px}.card h4{margin:17px 0 6px}.card ul,.card ol{padding-left:22px;line-height:1.65}.card li{margin:5px 0}.callout{border-left:3px solid #e8ba72;padding:10px 13px;background:#272a2a;color:#e7d9bb;border-radius:4px}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}.requirement{padding:10px 0;border-bottom:1px solid #293950}.requirement:last-child{border:0}.req-type{font-size:.75rem;color:#69d5bd;text-transform:uppercase;letter-spacing:.08em;font-weight:700}.small{font-size:.88rem}@media(max-width:700px){.grid,.two-col{grid-template-columns:1fr}.wrap{padding:24px 15px 50px}.panel,.card{padding:17px}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div class="eyebrow">UNIVERSAL SIMULATOR · SOLUTION DESIGN</div>
+      <h1>Turn requirements into a buildable plan</h1>
+      <p class="muted">Describe what you want to build. The planner organizes the requirements into a product blueprint with architecture options, milestones, acceptance checks, and questions to resolve.</p>
+    </header>
+    <section class="panel" aria-labelledby="input-title">
+      <h2 id="input-title">Describe your product</h2>
+      <p class="muted">Include who it serves, what they need to do, important data, integrations, platform preferences, and constraints. Keep unknown details open; the planner will flag them rather than invent answers.</p>
+      <label for="requirements">Product requirements</label>
+      <textarea id="requirements" placeholder="Example: Build a web and mobile appointment booking service for independent clinics. Patients can find providers, see available times, book or cancel visits, and receive email reminders. Clinic staff manage schedules and patient records. It must protect sensitive health data and support 10,000 patients. Launch an MVP in 12 weeks."></textarea>
+      <div class="grid" style="margin-top:14px">
+        <div><label for="audience">Primary users (optional)</label><input id="audience" placeholder="e.g. patients, clinic staff"></div>
+        <div><label for="platform">Preferred platform (optional)</label><select id="platform"><option value="auto">Recommend based on requirements</option><option>Web application</option><option>Mobile application</option><option>Web and mobile applications</option><option>API / backend service</option><option>Internal business tool</option></select></div>
+      </div>
+      <div class="actions"><button class="button" id="generate" type="button">Generate solution blueprint</button><button class="button secondary" id="clear" type="button">Clear</button></div>
+      <p class="muted small">This first version runs locally in your browser. It creates a structured planning draft; it does not generate, deploy, or verify production code.</p>
+    </section>
+    <section id="results" class="results" aria-live="polite">
+      <div class="result-head"><div><div class="eyebrow">SOLUTION BLUEPRINT</div><h2 id="blueprint-title">Implementation plan</h2><p class="muted" id="blueprint-summary"></p></div><button class="button secondary" id="download" type="button">Download as Markdown</button></div>
+      <div class="callout" id="assumption-note"></div>
+      <div class="two-col">
+        <article class="card"><h3>Requirements breakdown</h3><div id="requirements-list"></div></article>
+        <article class="card"><h3>Recommended solution shape</h3><div id="architecture"></div></article>
+      </div>
+      <div class="two-col">
+        <article class="card"><h3>Delivery milestones</h3><ol id="milestones"></ol></article>
+        <article class="card"><h3>Questions to resolve</h3><ul id="questions"></ul></article>
+      </div>
+      <article class="card"><h3>Acceptance checks</h3><ul id="acceptance"></ul></article>
+      <p class="muted small">Before implementation, validate the architecture and security, privacy, accessibility, legal, and operational requirements with the relevant experts. Estimates and technology suggestions are starting points, not guarantees.</p>
+    </section>
+  </main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let lastMarkdown = '';
+  const categories = [
+    ['Security & privacy', /\b(secur|privacy|private|encrypt|sensitive|health data|hipaa|gdpr|permission|role-based|authentication|authorization|access control)\b/i],
+    ['Integrations', /\b(integrat|connect|sync|payment|stripe|paypal|email|sms|calendar|webhook|third.party|api)\b/i],
+    ['Data & records', /\b(data|record|profile|history|upload|document|file|report|analytics|search)\b/i],
+    ['Notifications', /\b(notif|remind|email|sms|push message|alert)\b/i],
+    ['User workflows', /\b(user|customer|patient|staff|admin|book|cancel|schedule|order|pay|manage|create|view|edit|share|submit|track|discover|find)\b/i],
+    ['Scale & performance', /\b(scale|user|customer|request|traffic|latency|fast|available|reliable|concurrent|load)\b/i],
+    ['Platform & experience', /\b(web|mobile|ios|android|browser|responsive|dashboard|portal|accessib|offline)\b/i]
+  ];
+  function splitRequirements(text) {
+    return text.split(/\n+|(?<=[.!?])\s+/).map(s => s.replace(/^\s*[-*•\d.)]+\s*/, '').trim()).filter(s => s.length > 10);
+  }
+  function classify(items) {
+    return items.map(text => {
+      const found = categories.find(([, pattern]) => pattern.test(text));
+      return {text, category: found ? found[0] : 'Product requirement'};
+    });
+  }
+  function recommend(text, platform) {
+    const t = text.toLowerCase();
+    const selected = platform !== 'auto' ? platform : (/(ios|android|mobile app|phone app)/.test(t) ? (/\bweb\b/.test(t) ? 'Web and mobile applications' : 'Mobile application') : /\bapi\b|backend service/.test(t) ? 'API / backend service' : 'Responsive web application');
+    const items = [`Client: ${selected}; confirm the device, browser, accessibility, and offline needs with users.`, 'Application API: validate inputs, enforce authentication and authorization on the server, and version public interfaces.', 'Persistent data store: model users, core product records, lifecycle states, and audit history; define retention and deletion rules.', 'Operations: add structured logs, health checks, backups, error monitoring, and a tested recovery process.'];
+    if (/payment|checkout|billing|subscription|stripe|paypal/.test(t)) items.push('Payments: use a hosted payment provider; verify signed webhooks and never store raw card details.');
+    if (/email|sms|remind|notification|alert/.test(t)) items.push('Notifications: process delivery asynchronously, track delivery status, and provide user preferences and retry handling.');
+    if (/upload|document|image|file/.test(t)) items.push('Uploads: store files separately from application records; validate type and size, scan where appropriate, and use restricted access links.');
+    if (/health data|hipaa|gdpr|sensitive|patient|financial|encrypt/.test(t)) items.push('Sensitive data: perform a threat model and privacy review; minimize collection, encrypt transport/storage, restrict access, and define audit and retention controls. Confirm applicable regulations with qualified counsel.');
+    if (/real.time|live|chat|stream|instant/.test(t)) items.push('Realtime behavior: identify freshness/latency targets first, then select polling, server-sent events, or WebSockets accordingly.');
+    return {selected, items};
+  }
+  function node(tag, text, parent) { const el = document.createElement(tag); el.textContent = text; parent.appendChild(el); return el; }
+  function render(text, audience, platform) {
+    const items = classify(splitRequirements(text));
+    const arch = recommend(text, platform);
+    const first = text.trim().split(/(?<=[.!?])\s|\n/)[0].replace(/^\s*[-*•\d.)]+\s*/, '');
+    $('blueprint-title').textContent = first ? `${first.slice(0, 72)}${first.length > 72 ? '…' : ''}` : 'Implementation plan';
+    $('blueprint-summary').textContent = `Planning draft for ${audience || 'the intended users'}. ${items.length} requirement statement(s) identified. Recommended starting platform: ${arch.selected}.`;
+    $('assumption-note').textContent = 'Planning draft, not a finished or verified product. Missing details are called out below; confirm all assumptions before committing to scope, architecture, timeline, budget, or compliance claims.';
+    const reqRoot = $('requirements-list'); reqRoot.replaceChildren();
+    if (!items.length) node('p', 'No individual requirements were detected. Add a few specific needs or goals to get a useful breakdown.', reqRoot);
+    items.forEach(item => { const block = document.createElement('div'); block.className = 'requirement'; node('span', item.category, block).className = 'req-type'; node('div', item.text, block); reqRoot.appendChild(block); });
+    const archRoot = $('architecture'); archRoot.replaceChildren();
+    arch.items.forEach(value => node('p', value, archRoot));
+    const milestoneData = [
+      ['1. Discovery & scope', 'Confirm target users, critical workflows, exclusions, success measures, data sensitivity, and launch constraints. Produce a reviewed requirements list and clickable workflow sketch.'],
+      ['2. Technical foundation', 'Create the repository, development/test environments, authentication and permissions model, initial data schema, CI checks, and deployment skeleton.'],
+      ['3. Core MVP workflows', 'Implement the highest-priority end-to-end user journey, validation, error states, and the minimum admin/support tools needed to operate it.'],
+      ['4. Integrations & safeguards', 'Add required third-party services, privacy/security controls, monitoring, backups, rate limits, and documented operational procedures.'],
+      ['5. Verification & launch', 'Run acceptance, accessibility, security, performance, and recovery checks against agreed targets; pilot with users, fix critical issues, then release gradually.']
+    ];
+    const milestones = $('milestones'); milestones.replaceChildren(); milestoneData.forEach(([title, detail]) => { const li = document.createElement('li'); const strong = node('strong', title + ' — ', li); node('span', detail, li); milestones.appendChild(li); });
+    const questions = [];
+    if (!audience && !/\b(for|users|customers|patients|staff|admins|teams)\b/i.test(text)) questions.push('Who are the primary user groups, and what is each group trying to accomplish?');
+    if (!/\b(must|shall|should|can|allow|enable|support|need|require|user|customer|patient|staff|admin)\b/i.test(text)) questions.push('What are the 3–5 essential user actions the first release must support?');
+    if (!/\b(data|record|profile|history|upload|document|file)\b/i.test(text)) questions.push('What information must the product store, who can see it, and how long should it be kept?');
+    if (!/\b(secur|privacy|encrypt|sensitive|health|payment|personal data|gdpr|hipaa)\b/i.test(text)) questions.push('Will the system handle personal, financial, health, or otherwise sensitive information? What security/privacy obligations apply?');
+    if (!/\b(integrat|api|payment|email|sms|calendar|webhook|third.party)\b/i.test(text)) questions.push('Which external systems, identity providers, payment services, or communication channels must it integrate with?');
+    if (!/\b(budget|\$|cost|week|month|deadline|launch|date)\b/i.test(text)) questions.push('What are the budget, delivery deadline, and ongoing operating-cost limits?');
+    if (!/\b(availability|uptime|latency|response time|concurrent|requests per|users|scale|performance)\b/i.test(text)) questions.push('What are the expected user volume, peak load, availability, and response-time targets?');
+    questions.push('What measurable outcome determines whether the MVP is successful, and who will approve launch?');
+    const questionRoot = $('questions'); questionRoot.replaceChildren(); questions.forEach(q => node('li', q, questionRoot));
+    const checks = [
+      'Each listed requirement has an owner, priority, and a testable pass/fail acceptance criterion before implementation begins.',
+      'Users can complete the agreed primary workflow; invalid input, unauthorized access, and service errors are handled safely and clearly.',
+      'Permissions are enforced server-side, sensitive data is minimized and protected, and security/privacy review findings are resolved.',
+      'Automated tests cover core behavior and critical failures; changes pass the project’s CI checks.',
+      'Monitoring, backups, restore procedures, support ownership, and a rollback plan are verified before general release.',
+      'Performance, accessibility, and availability are tested against numeric targets agreed with stakeholders.'
+    ];
+    const acceptance = $('acceptance'); acceptance.replaceChildren(); checks.forEach(c => node('li', c, acceptance));
+    lastMarkdown = toMarkdown(items, arch, milestoneData, questions, checks, text, audience);
+    $('results').classList.add('visible'); $('results').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+  function toMarkdown(items, arch, milestones, questions, checks, raw, audience) {
+    return `# Solution Blueprint\n\n## Original requirements\n\n${raw.trim()}\n\n## Intended users\n\n${audience || 'To be confirmed'}\n\n## Requirements breakdown\n\n${items.length ? items.map(i => `- **${i.category}:** ${i.text}`).join('\n') : '- Add more specific requirements.'}\n\n## Recommended solution shape\n\n${arch.items.map(i => `- ${i}`).join('\n')}\n\n## Delivery milestones\n\n${milestones.map(([t,d]) => `- **${t}:** ${d}`).join('\n')}\n\n## Questions to resolve\n\n${questions.map(q => `- [ ] ${q}`).join('\n')}\n\n## Acceptance checks\n\n${checks.map(c => `- [ ] ${c}`).join('\n')}\n\n> Planning draft only. Validate assumptions, security, privacy, accessibility, compliance, budget, and operations with qualified reviewers. This tool does not generate or verify production code.\n`;
+  }
+  $('generate').addEventListener('click', () => { const text = $('requirements').value.trim(); if (!text) { $('requirements').focus(); $('requirements').setCustomValidity('Describe the product requirements first.'); $('requirements').reportValidity(); $('requirements').setCustomValidity(''); return; } render(text, $('audience').value.trim(), $('platform').value); });
+  $('clear').addEventListener('click', () => { $('requirements').value = ''; $('audience').value = ''; $('platform').value = 'auto'; $('results').classList.remove('visible'); $('requirements').focus(); });
+  $('download').addEventListener('click', () => { const blob = new Blob([lastMarkdown], {type:'text/markdown;charset=utf-8'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'solution-blueprint.md'; a.click(); URL.revokeObjectURL(url); });
+})();
+</script>
+</body>
+</html>
