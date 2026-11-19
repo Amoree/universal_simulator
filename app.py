@@ -1,9 +1,9 @@
 """Turn plain-language product requirements into a reviewed build specification.
 
 This service can use an OpenAI-compatible chat-completions endpoint to generate
-scaffold files. Without model credentials it provides a transparent local
-blueprint, and never pretends that estimates or a generic template are a built
-product. Generated files are returned for review; they are never executed.
+scaffold files. Without model credentials, code generation is unavailable; the
+interactive page explains how to configure it. Generated files are returned for
+review and are never executed or written to a repository.
 """
 
 from __future__ import annotations
@@ -15,14 +15,16 @@ import secrets
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 app = FastAPI(
     title="Universal Simulator — Requirements to Solution",
-    version="0.2.0",
+    version="0.3.0",
     description="Convert product requirements into a traceable solution blueprint and optional code scaffold.",
 )
 
@@ -58,17 +60,17 @@ class GeneratedFile(BaseModel):
 
 class SolutionBundle(BaseModel):
     summary: str
-    assumptions: list[str] = []
-    open_questions: list[str] = []
-    requirements: list[dict[str, Any]] = []
-    user_stories: list[dict[str, Any]] = []
-    architecture: dict[str, Any] = {}
-    data_model: list[dict[str, Any]] = []
-    api_contract: list[dict[str, Any]] = []
-    security_and_quality: list[str] = []
-    implementation_plan: list[dict[str, Any]] = []
-    test_plan: list[dict[str, Any]] = []
-    files: list[GeneratedFile] = []
+    assumptions: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    requirements: list[dict[str, Any]] = Field(default_factory=list)
+    user_stories: list[dict[str, Any]] = Field(default_factory=list)
+    architecture: dict[str, Any] = Field(default_factory=dict)
+    data_model: list[dict[str, Any]] = Field(default_factory=list)
+    api_contract: list[dict[str, Any]] = Field(default_factory=list)
+    security_and_quality: list[str] = Field(default_factory=list)
+    implementation_plan: list[dict[str, Any]] = Field(default_factory=list)
+    test_plan: list[dict[str, Any]] = Field(default_factory=list)
+    files: list[GeneratedFile] = Field(default_factory=list)
 
 
 # Small in-memory demo store. Use a database for multi-process or durable operation.
@@ -91,7 +93,7 @@ Decompose the supplied requirements, including non-numeric functional, user, sec
 
 
 def local_blueprint(request: SolutionRequest) -> dict[str, Any]:
-    """Useful, honest offline mode: structure requirements without claiming code generation."""
+    """Offline fallback: preserve requirements, but don't claim to generate a solution."""
     lines = [line.strip(" \t-*•\r") for line in request.requirements.splitlines()]
     statements = [line for line in lines if len(line) >= 8]
     if not statements:
@@ -131,7 +133,10 @@ def model_blueprint(request: SolutionRequest) -> dict[str, Any]:
     model = os.getenv("LLM_MODEL", "")
     base_url = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     if not api_key or not model:
-        raise HTTPException(status_code=503, detail="Code generation is not configured. Set LLM_API_KEY and LLM_MODEL; local blueprint mode remains available with include_code=false.")
+        raise HTTPException(
+            status_code=503,
+            detail="Code generation is not configured. Set LLM_API_KEY and LLM_MODEL in the server environment, then restart it.",
+        )
 
     user_payload = {
         "product_name": request.product_name,
@@ -170,13 +175,15 @@ def model_blueprint(request: SolutionRequest) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=f"The generated solution did not match the required schema: {exc}") from exc
     if len(bundle.files) > 20:
         raise HTTPException(status_code=502, detail="The generated bundle exceeded the 20-file limit.")
+    if not request.include_code:
+        bundle.files = []
     return bundle.model_dump()
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     configured = bool(os.getenv("LLM_API_KEY") and os.getenv("LLM_MODEL"))
-    return {"status": "ok", "code_generation": "configured" if configured else "not configured; blueprint mode available"}
+    return {"status": "ok", "code_generation": "configured" if configured else "not configured; set LLM_API_KEY and LLM_MODEL"}
 
 
 @app.post("/api/solutions", status_code=201)
@@ -209,6 +216,6 @@ def get_solution(solution_id: str) -> dict[str, Any]:
     return result
 
 
-@app.get("/")
-def root() -> dict[str, str]:
-    return {"message": "Turn product requirements into a traceable software solution.", "docs": "/docs", "create_solution": "POST /api/solutions"}
+@app.get("/", include_in_schema=False)
+def home() -> FileResponse:
+    return FileResponse(Path(__file__).parent / "static" / "index.html")

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101826">
+  <title>Universal Simulator — Build from Requirements</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --panel:#121d2e; --panel2:#172438; --line:#28384f; --text:#edf3fb; --muted:#a9b8cb; --accent:#73e0c1; --blue:#8eb8ff; --danger:#ffb1a8; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(ellipse at 80% -20%,#193452 0,transparent 45%),var(--bg); color:var(--text); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(1100px,calc(100% - 32px)); margin:0 auto; padding:44px 0 80px; }
+    header { max-width:790px; margin-bottom:30px; }
+    .eyebrow { color:var(--accent); font-size:.78rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:.45rem 0 .7rem; font-size:clamp(2rem,5vw,3.55rem); line-height:1.08; letter-spacing:-.04em; }
+    h2 { font-size:1.3rem; margin:0 0 12px; }
+    p { color:var(--muted); }
+    .lead { max-width:720px; font-size:1.08rem; }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px; align-items:start; }
+    .card { background:linear-gradient(145deg,rgba(23,36,56,.96),rgba(17,28,44,.96)); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:0 16px 48px #02071144; }
+    label { display:block; font-size:.93rem; font-weight:650; margin:16px 0 7px; }
+    label:first-child { margin-top:0; }
+    input,textarea { width:100%; border:1px solid #3a4c65; background:#0b1422; color:var(--text); border-radius:9px; padding:12px 13px; font:inherit; }
+    input:focus,textarea:focus { outline:2px solid var(--blue); outline-offset:1px; border-color:transparent; }
+    textarea { min-height:250px; resize:vertical; }
+    .hint { margin:6px 0 0; font-size:.83rem; }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    button { border:0; border-radius:9px; padding:12px 17px; font:inherit; font-weight:750; cursor:pointer; }
+    button:focus-visible { outline:3px solid white; outline-offset:3px; }
+    .primary { margin-top:19px; background:var(--accent); color:#08251d; }
+    .primary:hover { background:#a2f3dc; }
+    .primary:disabled { opacity:.62; cursor:wait; }
+    .aside h2 { font-size:1rem; }
+    .aside ul { padding-left:19px; color:var(--muted); }
+    .aside li { margin:8px 0; }
+    .callout { margin-top:15px; padding:12px; border:1px solid #355170; border-radius:10px; background:#0d1929; color:var(--muted); font-size:.86rem; }
+    .status { margin:20px 0 0; padding:13px 15px; border-radius:10px; background:#15243a; border:1px solid var(--line); white-space:pre-wrap; }
+    .status.error { border-color:#87443f; color:var(--danger); }
+    .status[hidden],#results[hidden] { display:none; }
+    #results { margin-top:24px; }
+    .result-head { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:15px; }
+    .badge { color:var(--accent); border:1px solid #3b786d; border-radius:999px; padding:3px 9px; font-size:.8rem; }
+    .result-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .result-card { min-width:0; background:#0d1726; border:1px solid var(--line); padding:16px; border-radius:12px; }
+    .result-card.wide { grid-column:1/-1; }
+    .result-card h3 { margin:0 0 9px; font-size:1rem; }
+    .result-card p,.result-card li { color:#c2cede; }
+    .result-card ul,.result-card ol { margin:8px 0 0; padding-left:20px; }
+    .result-card li { margin:7px 0; overflow-wrap:anywhere; }
+    .file { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line); }
+    .file code { color:#cce0ff; overflow-wrap:anywhere; }
+    .small-button { background:#21324a; color:var(--text); padding:7px 10px; font-size:.83rem; }
+    .small-button:hover { background:#2b4260; }
+    details { margin-top:8px; }
+    details summary { cursor:pointer; color:var(--blue); }
+    pre { max-height:420px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:12px; border-radius:8px; background:#060b12; font-size:.82rem; }
+    footer { margin-top:22px; font-size:.82rem; color:var(--muted); }
+    @media(max-width:780px) { .layout { grid-template-columns:1fr; } .aside { order:2; } }
+    @media(max-width:560px) { main { width:min(100% - 22px,1100px); padding-top:28px; } .card { padding:16px; } .two,.result-grid { grid-template-columns:1fr; } .result-card.wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Universal Simulator</div>
+    <h1>Turn requirements into a buildable solution.</h1>
+    <p class="lead">Describe the product you want in plain language. The backend will break it into requirements, design a solution, plan implementation and tests, and generate a reviewable project scaffold.</p>
+  </header>
+
+  <div class="layout">
+    <section class="card" aria-labelledby="form-title">
+      <h2 id="form-title">Describe your product</h2>
+      <form id="requirements-form">
+        <div class="two">
+          <div>
+            <label for="product-name">Product name</label>
+            <input id="product-name" name="product_name" required minlength="2" maxlength="120" placeholder="e.g. Community Clinic Booking">
+          </div>
+          <div>
+            <label for="target-stack">Preferred technology (optional)</label>
+            <input id="target-stack" name="target_stack" maxlength="500" placeholder="e.g. Python, FastAPI, React">
+          </div>
+        </div>
+        <label for="requirements">Product requirements</label>
+        <textarea id="requirements" name="requirements" required minlength="20" maxlength="40000" placeholder="Explain who the product is for, what people should be able to do, important workflows, rules, integrations, and security needs. Paste full requirements, user stories, or acceptance criteria."></textarea>
+        <p class="hint">Include the outcomes you want, not just numeric traffic or cost estimates. More detail produces a better first draft.</p>
+        <button class="primary" id="submit-button" type="submit">Design and build the solution</button>
+      </form>
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <aside class="card aside">
+      <h2>What you’ll get</h2>
+      <ul>
+        <li>Requirements and acceptance criteria with traceable IDs</li>
+        <li>Architecture, data model, and API outline</li>
+        <li>Prioritized implementation steps and test plan</li>
+        <li>Generated starter files to download and review</li>
+      </ul>
+      <div class="callout" id="model-status">Checking whether code generation is configured…</div>
+      <div class="callout">Generated code is a draft. Review and test it before use; this service does not run code or deploy software.</div>
+    </aside>
+  </div>
+
+  <section id="results" aria-labelledby="results-title" hidden>
+    <div class="result-head">
+      <h2 id="results-title">Your solution</h2>
+      <span class="badge" id="mode-badge"></span>
+    </div>
+    <div class="result-grid" id="result-grid"></div>
+  </section>
+  <footer>Do not submit secrets or real personal, health, or regulated data. Requirements are sent to the configured model provider for code generation.</footer>
+</main>
+<script>
+  const form = document.querySelector('#requirements-form');
+  const statusBox = document.querySelector('#status');
+  const submitButton = document.querySelector('#submit-button');
+  const results = document.querySelector('#results');
+  const resultGrid = document.querySelector('#result-grid');
+
+  function text(tag, value) {
+    const node = document.createElement(tag);
+    node.textContent = value == null ? '' : String(value);
+    return node;
+  }
+  function card(title, wide = false) {
+    const section = document.createElement('section');
+    section.className = `result-card${wide ? ' wide' : ''}`;
+    section.append(text('h3', title));
+    resultGrid.append(section);
+    return section;
+  }
+  function listCard(title, items, formatter, wide = false) {
+    if (!Array.isArray(items) || items.length === 0) return;
+    const section = card(title, wide);
+    const list = document.createElement('ul');
+    for (const item of items) {
+      const li = document.createElement('li');
+      li.textContent = formatter(item);
+      list.append(li);
+    }
+    section.append(list);
+  }
+  function renderSolution(data) {
+    resultGrid.replaceChildren();
+    document.querySelector('#mode-badge').textContent = data.mode === 'model_generated' ? 'Generated project draft' : 'Blueprint only';
+    const summary = card('Solution overview', true);
+    summary.append(text('p', data.summary));
+    if (data.architecture?.overview) summary.append(text('p', data.architecture.overview));
+
+    listCard('Requirements', data.requirements, item => `${item.id || 'REQ'} — ${item.statement || ''}${item.acceptance_criteria?.length ? ` | Acceptance: ${item.acceptance_criteria.join('; ')}` : ''}`);
+    listCard('User stories', data.user_stories, item => `${item.story || ''}${item.acceptance_criteria?.length ? ` | Acceptance: ${item.acceptance_criteria.join('; ')}` : ''}`);
+    if (data.architecture?.components?.length || data.architecture?.technology_choices?.length) {
+      const section = card('Architecture');
+      for (const component of data.architecture.components || []) section.append(text('p', typeof component === 'string' ? component : JSON.stringify(component)));
+      for (const choice of data.architecture.technology_choices || []) section.append(text('p', typeof choice === 'string' ? choice : JSON.stringify(choice)));
+    }
+    listCard('Data model', data.data_model, item => `${item.name || 'Entity'}: ${item.purpose || ''} ${item.fields?.length ? `(${item.fields.join(', ')})` : ''}`);
+    listCard('API outline', data.api_contract, item => `${item.method || ''} ${item.path || ''} — ${item.purpose || ''}`);
+    listCard('Implementation plan', data.implementation_plan, (item, index) => `${item.step || `Step ${index + 1}`}: ${item.deliverable || ''}`);
+    listCard('Test plan', data.test_plan, item => `${item.scenario || ''} → ${item.expected_result || ''}`);
+    listCard('Assumptions', data.assumptions, item => item);
+    listCard('Open questions', data.open_questions, item => item);
+    listCard('Security and quality', data.security_and_quality, item => item);
+
+    const files = Array.isArray(data.files) ? data.files : [];
+    if (files.length) {
+      const section = card(`Generated project files (${files.length})`, true);
+      section.append(text('p', 'Download each draft file, review it, then assemble and test the project in an isolated development environment.'));
+      for (const file of files) {
+        const row = document.createElement('div');
+        row.className = 'file';
+        row.append(text('code', file.path));
+        const button = text('button', 'Download');
+        button.type = 'button';
+        button.className = 'small-button';
+        button.addEventListener('click', () => {
+          const blob = new Blob([file.content], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = file.path.split('/').pop() || 'generated-file.txt';
+          link.click();
+          URL.revokeObjectURL(url);
+        });
+        row.append(button);
+        section.append(row);
+        const details = document.createElement('details');
+        details.append(text('summary', 'Preview file'));
+        details.append(text('pre', file.content));
+        section.append(details);
+      }
+    } else {
+      const section = card('Build output', true);
+      section.append(text('p', 'No project files were generated. Check model configuration and try again.'));
+    }
+    results.hidden = false;
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    statusBox.hidden = false;
+    statusBox.className = 'status';
+    statusBox.textContent = 'Reading your requirements and designing the solution… This can take a minute.';
+    results.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = 'Building solution…';
+    const payload = {
+      product_name: form.elements.product_name.value.trim(),
+      target_stack: form.elements.target_stack.value.trim() || null,
+      requirements: form.elements.requirements.value.trim(),
+      include_code: true
+    };
+    try {
+      const response = await fetch('/api/solutions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+      statusBox.textContent = `Solution ready (${data.solution_id}). Review the design and generated files below.`;
+      renderSolution(data);
+    } catch (error) {
+      statusBox.className = 'status error';
+      statusBox.textContent = `Could not generate the solution: ${error.message}\n\nCode generation needs LLM_API_KEY and LLM_MODEL configured on the server. Set them in the server environment and restart the app.`;
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Design and build the solution';
+    }
+  });
+
+  fetch('/health').then(response => response.json()).then(data => {
+    const configured = data.code_generation === 'configured';
+    document.querySelector('#model-status').textContent = configured
+      ? 'Code generation is configured. Submissions produce a solution design and starter project files.'
+      : 'Code generation needs LLM_API_KEY and LLM_MODEL set on the server. The page will show setup guidance if they are missing.';
+  }).catch(() => {
+    document.querySelector('#model-status').textContent = 'Cannot reach the backend health endpoint. Check that the server is running.';
+  });
+</script>
+</body>
+</html>

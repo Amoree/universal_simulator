@@ -1,14 +1,6 @@
 # Universal Simulator — Requirements to Buildable Solution
 
-Universal Simulator turns natural-language product requirements into a structured, traceable solution design and (when configured with a model provider) a draft project scaffold. It is not a traffic, storage, or cost estimator. It does not claim that generated code is tested or production-ready.
-
-## What it does
-
-- Accepts complete product requirements as prose, bullets, user stories, and acceptance criteria—not just numeric inputs.
-- Produces a solution bundle with decomposed requirements, assumptions, open questions, user stories, architecture, data model, API contract, security/quality considerations, implementation steps, and test scenarios.
-- Can produce a set of project files using an OpenAI-compatible chat-completions API.
-- Keeps generated files in the response for review; the service does not execute them or write to a repository.
-- Provides an offline blueprint mode (`include_code: false`) when no model credentials are configured. Offline mode organizes input lines but deliberately does not pretend to design or build a complete system.
+Universal Simulator is a web app for entering plain-language product requirements and receiving a software solution draft. The page submits requirements to the backend, which asks a configured language model to analyze them and return a traceable design plus project files. This is not a traffic, storage, or cost estimator.
 
 ## Run locally
 
@@ -21,39 +13,26 @@ pip install -r requirements.txt
 uvicorn app:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs` to explore the API.
+Open `http://127.0.0.1:8000`. Enter a product name, optionally name your preferred stack, paste requirements, and select **Design and build the solution**. The page renders the returned specification and previews downloadable files. The API docs remain at `http://127.0.0.1:8000/docs`.
 
-### Enable code generation
+## Configure solution/code generation
 
-Configure a compatible provider in your environment (never commit credentials):
+The backend needs an OpenAI-compatible chat-completions provider. Set credentials in the server environment; never commit them to the repository.
 
 ```bash
 export LLM_API_KEY='your-provider-api-key'
 export LLM_MODEL='your-model-name'
-# Optional; defaults to https://api.openai.com/v1
+# Optional. Defaults to https://api.openai.com/v1
 export LLM_BASE_URL='https://api.openai.com/v1'
 uvicorn app:app --reload
 ```
 
-The configured model service receives the product name, requirements, and target stack. Review its privacy and data handling terms before sending sensitive requirements. Do not submit secrets or real personal, health, or regulated data.
+The web page checks `/health` and indicates whether code generation is configured. Without credentials, the backend returns a clear setup error rather than pretending that a limited text parser generated a software solution.
 
-## Create a solution
+## Solution output
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/solutions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "product_name": "Community Clinic Booking",
-    "target_stack": "Python 3.11, FastAPI, PostgreSQL, React",
-    "include_code": true,
-    "requirements": "Patients can create an account and book an appointment.\nClinic staff can publish available appointment slots.\nPatients can cancel up to 24 hours before the visit.\nStaff must only access records for their clinic.\nSend a confirmation after a booking is created."
-  }'
-```
+`POST /api/solutions` accepts `product_name`, natural-language `requirements`, optional `target_stack`, and `include_code`. The generated response can include decomposed functional/nonfunctional requirements, acceptance criteria, user stories, architecture, data entities, API outline, implementation steps, quality/security considerations, test scenarios, and up to 20 project files (each max 100 KB). `GET /api/solutions/{solution_id}` retrieves a result while the server process remains running.
 
-The response contains a `solution_id`, traceable requirements and design artifacts, plus `files` when code generation is enabled. Retrieve the result again with `GET /api/solutions/{solution_id}` while the process remains running. The demonstration store is in-memory and is cleared on restart.
+The generated files are untrusted drafts. The simulator returns them for review; it does not execute them, write directly into a repository, run their tests, or deploy the system. Assemble downloaded files into a project and inspect, install, and test in an isolated environment before use. Model output may be incomplete or incorrect. Review all requirements and generated code before treating it as a build plan.
 
-For the local, no-model blueprint, set `include_code` to `false`. To get actual implementation files, configure a model provider and set `include_code` to `true`; otherwise the API returns a clear configuration error rather than suggesting a blueprint is a built solution.
-
-## Build and safety boundaries
-
-Generated source is untrusted draft code. Inspect every file, run dependency/security checks, and test in an isolated environment before integrating it. The API validates the response shape and relative file paths, limits output to 20 files, and never executes generated content. It is a prototype: add authentication, durable storage, rate limits, job processing, stronger schema validation, tests, and deployment controls before exposing it to users. No generated output should be represented as production-ready without engineering review.
+Do not submit secrets or real personal, health, or regulated data. Requirements are transmitted to the configured model provider; assess that provider's data-handling terms before use. The solution store is in-memory and is cleared on restart. Add authentication, durable storage, rate limiting, background jobs, stronger validation, automated tests, and deployment controls before exposing this prototype to users.
